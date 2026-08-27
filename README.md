@@ -26,11 +26,13 @@ The older Streamlit prototype in `app.py` is retained only for historical refere
 
 ## CasaOS deployment on port 8877
 
-Copy this project folder to the CasaOS server, for example under
-`/DATA/AppData/bulk-sticker-generator`, then run:
+Open the CasaOS terminal (or connect over SSH), then clone this public
+repository and start the container:
 
 ```bash
-cd /DATA/AppData/bulk-sticker-generator
+cd /DATA/AppData
+git clone https://github.com/Abdallahdalvi/sticker.git bulk-sticker-generator
+cd bulk-sticker-generator
 docker compose -f docker-compose.casaos.yml up -d --build
 ```
 
@@ -42,9 +44,11 @@ Open `http://CASAOS_SERVER_IP:8877/`. The Compose service:
 - includes an `/api/health` Docker health check
 - supports both `amd64` and `arm64` CasaOS hosts
 
-To update after copying a newer project version:
+To update the running CasaOS installation later:
 
 ```bash
+cd /DATA/AppData/bulk-sticker-generator
+git pull --ff-only
 docker compose -f docker-compose.casaos.yml up -d --build
 ```
 
@@ -100,3 +104,4 @@ The checked-in raster is retained only as the source for the traced vector conto
 python scripts/build_reference_asset.py "C:\path\to\reference.pdf" static/reference_static.png
 python scripts/build_vector_art.py static/reference_static.png static/reference_vector_paths.json
 ```
+
