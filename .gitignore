@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Runtime and generated output
+*.log
+tmp/
+output/
+outputs/
+
+# Local samples and obsolete prototypes
+demo_devices.xlsx
+preview_check.png
+app.py
+_preview_render.py
+
+# Source-only raster/export inputs; runtime uses path-only vector derivatives
+static/reference_static.png
+static/make_in_india.svg

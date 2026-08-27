@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+*.log
+tmp
+output
+tests
+demo_devices.xlsx
+preview_check.png
+app.py
+_preview_render.py
+static/reference_static.png
+static/make_in_india.svg

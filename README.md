@@ -100,4 +100,3 @@ The checked-in raster is retained only as the source for the traced vector conto
 python scripts/build_reference_asset.py "C:\path\to\reference.pdf" static/reference_static.png
 python scripts/build_vector_art.py static/reference_static.png static/reference_vector_paths.json
 ```
-

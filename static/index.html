@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk Sticker Generator</title>
+  <link rel="stylesheet" href="editor.css?v=13">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Reliance 4G Dongle</p>
+      <h1>Bulk Sticker Generator</h1>
+      <p class="subtitle">Excel rows to scanner-ready, physical-size PDF labels</p>
+    </div>
+    <div class="size-pill">
+      <span>Label size</span>
+      <strong>24.08 × 74.08 mm</strong>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="preview-panel card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Print preview</p>
+          <h2 id="preview-title">Reference layout</h2>
+        </div>
+        <div id="row-nav" class="row-nav hidden">
+          <button type="button" id="prev-row" aria-label="Previous row">‹</button>
+          <span id="row-label">Row 1 / 1</span>
+          <button type="button" id="next-row" aria-label="Next row">›</button>
+        </div>
+      </div>
+      <div class="label-stage">
+        <div class="label-preview">
+          <img id="preview-image" src="/api/reference.svg?v=13" alt="Sticker preview">
+        </div>
+      </div>
+      <p class="preview-note">Everything is vector. QR contains Device ID, CCID, and IMEI.</p>
+    </section>
+
+    <section class="controls-panel">
+      <div class="card step-card">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h2>Upload device data</h2>
+          <p>Use Text-formatted identifier cells for Device ID, IMEI, and CCID. The QR code automatically contains all three values.</p>
+          <label class="upload-box" for="data-file">
+            <span class="upload-icon">↑</span>
+            <span><strong>Choose Excel or CSV</strong><small>.xlsx or UTF-8 .csv, up to 10 MB</small></span>
+            <input id="data-file" type="file" accept=".xlsx,.csv">
+          </label>
+          <a class="template-link" href="device_data_template.xlsx" download>Download the correctly formatted Excel template</a>
+          <div id="upload-status" class="status hidden" role="status"></div>
+        </div>
+      </div>
+
+      <div class="card step-card muted" id="export-card">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h2>Choose output</h2>
+          <div class="field-grid">
+            <label>Start record<input id="start-record" type="number" min="1" value="1" disabled></label>
+            <label>End record<input id="end-record" type="number" min="1" value="1" disabled></label>
+          </div>
+          <div class="field-grid option-grid">
+            <label class="select-label">Output layout
+              <select id="page-format" disabled>
+                <option value="label" selected>Individual sticker pages</option>
+                <option value="a4">A4 sheet - 21 stickers (7 × 3)</option>
+              </select>
+            </label>
+            <label class="select-label">Printer resolution
+              <select id="printer-dpi" disabled>
+                <option value="600" selected>600 DPI - recommended</option>
+                <option value="300">300 DPI - validated only when codes fit</option>
+              </select>
+            </label>
+          </div>
+          <div class="data-summary" id="data-summary">
+            <div><span>Records</span><strong>0</strong></div>
+            <div><span>PDF pages</span><strong>0</strong></div>
+            <div><span>Codes / label</span><strong>3</strong></div>
+          </div>
+          <button type="button" id="generate-pdf" class="primary-button" disabled>Generate sticker PDF</button>
+          <p class="print-warning" id="print-warning">Print at 100% / Actual Size. Do not use “Fit to page”.</p>
+        </div>
+      </div>
+
+      <div id="error-panel" class="card error-panel hidden" role="alert">
+        <h2>Data needs attention</h2>
+        <p id="error-summary"></p>
+        <div class="error-table-wrap">
+          <table>
+            <thead><tr><th>Row</th><th>Field</th><th>Issue</th></tr></thead>
+            <tbody id="error-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="editor.js?v=13"></script>
+</body>
+</html>

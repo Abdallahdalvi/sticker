@@ -1,0 +1,40 @@
+name: bulk-sticker-generator
+
+services:
+  sticker-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bulk-sticker-generator
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8877"
+      TZ: Asia/Kolkata
+    ports:
+      - "8877:8877"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8877/api/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: sticker-generator
+  author: Local
+  category: Utilities
+  description:
+    en_us: Generate scanner-ready Reliance device stickers in bulk from Excel or CSV.
+  tagline:
+    en_us: Bulk barcode and QR sticker generator
+  title:
+    en_us: Bulk Sticker Generator
+  port_map: "8877"
