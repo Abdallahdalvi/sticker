@@ -39,7 +39,7 @@ def test_csv_preserves_exact_identifier_text():
     rows = server.read_device_file(csv_bytes, "devices.csv")
     assert rows[0]["IMEI"] == "035678901234567"
     assert rows[0]["CCID"] == "08914800000123456789"
-    assert rows[0]["QR Data"] == "000123456789"
+    assert set(rows[0]) == {"Device ID", "Model", "CCID", "IMEI"}
 
 
 def test_qr_data_column_is_not_required():
@@ -49,6 +49,39 @@ def test_qr_data_column_is_not_required():
     ).encode()
     rows = server.read_device_file(csv_bytes, "devices.csv")
     assert server.validate_rows(rows) == []
+
+
+def test_blank_and_incomplete_rows_are_skipped_and_extra_columns_are_ignored():
+    csv_bytes = (
+        "Tester Name,Device ID,IMEI,CCID,QR Data,Model\n"
+        "A,5753120024723,866224084206712,89918640507061277734,1,KRIG42ACAAI26\n"
+        "B,5753120024724,866224084206713,,2,KRIG42ACAAI26\n"
+        ",,,,,\n"
+    ).encode()
+    result = server._read_device_file_result(csv_bytes, "devices.csv")
+    assert len(result.rows) == 1
+    assert result.blank_rows == 1
+    assert result.incomplete_rows == 1
+    assert result.ignored_columns == ("Tester Name", "QR Data")
+    assert result.rows[0] == {
+        "Device ID": "5753120024723",
+        "Model": "KRIG42ACAAI26",
+        "CCID": "89918640507061277734",
+        "IMEI": "866224084206712",
+    }
+
+
+def test_long_model_and_device_id_use_compact_unaligned_lines():
+    row = {
+        "Device ID": "5753120024723",
+        "Model": "KRIG42ACAAI26",
+        "CCID": "89918640507061277734",
+        "IMEI": "866224084206712",
+    }
+    svg = server.render_to_svg(row)
+    assert "Model:KRIG42ACAAI26" in svg
+    assert "Device ID:5753120024723" in svg
+    assert 'x="10.12"' not in svg
 
 
 def test_numeric_excel_identifier_cells_are_rejected():

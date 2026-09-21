@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,15 @@ MAKE_IN_INDIA_HEIGHT_MM = 4.3280
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 20_000
 REQUIRED_COLUMNS = ("Device ID", "IMEI", "CCID")
+IMPORTED_COLUMNS = ("Device ID", "Model", "CCID", "IMEI")
+
+
+@dataclass(frozen=True)
+class DeviceFileResult:
+    rows: list[dict[str, str]]
+    blank_rows: int
+    incomplete_rows: int
+    ignored_columns: tuple[str, ...]
 
 
 def _load_vector_art() -> dict[str, list[list[list[float]]]]:
@@ -119,10 +129,8 @@ HEADER_ALIASES = {
 
 # All Y values are measured from the top edge of the physical label.
 LAYOUT = {
-    "info_label_x": 1.81,
-    "info_colon_x": 10.12,
-    "model_value_x": 12.07,
-    "device_value_x": 11.98,
+    "info_x": 1.81,
+    "info_right": 23.08,
     "model_top": 47.69,
     "device_top": 50.61,
     "barcode_x": 2.10,
@@ -185,7 +193,7 @@ def _clean_cell_value(value: Any) -> str:
     return "" if value is None else str(value).replace("\u200b", "").replace("\ufeff", "").strip()
 
 
-def _canonicalize_rows(headers: list[Any], raw_rows: list[list[Any]]) -> list[dict[str, str]]:
+def _canonicalize_rows(headers: list[Any], raw_rows: list[list[Any]]) -> DeviceFileResult:
     canonical_headers = [_canonical_header(h) for h in headers]
     if any(not h for h in canonical_headers):
         raise ValueError("Every spreadsheet column must have a header.")
@@ -193,19 +201,31 @@ def _canonicalize_rows(headers: list[Any], raw_rows: list[list[Any]]) -> list[di
     if duplicates:
         raise ValueError(f"Duplicate columns after normalization: {', '.join(duplicates)}")
 
+    missing = [field for field in REQUIRED_COLUMNS if field not in canonical_headers]
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+    ignored_columns = tuple(header for header in canonical_headers if header not in IMPORTED_COLUMNS)
+
     rows: list[dict[str, str]] = []
+    blank_rows = 0
+    incomplete_rows = 0
     for raw in raw_rows:
         values = list(raw) + [""] * max(0, len(canonical_headers) - len(raw))
-        row = {
+        source_row = {
             header: _clean_cell_value(values[idx])
             for idx, header in enumerate(canonical_headers)
         }
-        if any(row.values()):
+        row = {field: source_row.get(field, "") for field in IMPORTED_COLUMNS}
+        if not any(row.values()):
+            blank_rows += 1
+        elif any(not row[field] for field in REQUIRED_COLUMNS):
+            incomplete_rows += 1
+        else:
             rows.append(row)
-    return rows
+    return DeviceFileResult(rows, blank_rows, incomplete_rows, ignored_columns)
 
 
-def _read_csv(data: bytes) -> list[dict[str, str]]:
+def _read_csv(data: bytes) -> DeviceFileResult:
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -218,7 +238,7 @@ def _read_csv(data: bytes) -> list[dict[str, str]]:
     return _canonicalize_rows(headers, [list(row) for row in reader])
 
 
-def _read_xlsx(data: bytes) -> list[dict[str, str]]:
+def _read_xlsx(data: bytes) -> DeviceFileResult:
     try:
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=False)
     except Exception as exc:
@@ -237,22 +257,40 @@ def _read_xlsx(data: bytes) -> list[dict[str, str]]:
     if duplicates:
         raise ValueError(f"Duplicate columns after normalization: {', '.join(duplicates)}")
 
+    missing = [field for field in REQUIRED_COLUMNS if field not in headers]
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+    ignored_columns = tuple(header for header in headers if header not in IMPORTED_COLUMNS)
+
     rows: list[dict[str, str]] = []
+    blank_rows = 0
+    incomplete_rows = 0
     numeric_identifier_cells: list[str] = []
     formula_identifier_cells: list[str] = []
     for cells in iterator:
-        row: dict[str, str] = {}
+        source_row: dict[str, str] = {}
+        source_cells: dict[str, Any] = {}
         for idx, header in enumerate(headers):
             cell = cells[idx] if idx < len(cells) else None
             value = None if cell is None else cell.value
-            if header in REQUIRED_COLUMNS and cell is not None:
-                if cell.data_type == "n" and value not in (None, ""):
-                    numeric_identifier_cells.append(cell.coordinate)
-                if cell.data_type == "f":
-                    formula_identifier_cells.append(cell.coordinate)
-            row[header] = _clean_cell_value(value)
-        if any(row.values()):
-            rows.append(row)
+            source_cells[header] = cell
+            source_row[header] = _clean_cell_value(value)
+        row = {field: source_row.get(field, "") for field in IMPORTED_COLUMNS}
+        if not any(row.values()):
+            blank_rows += 1
+            continue
+        if any(not row[field] for field in REQUIRED_COLUMNS):
+            incomplete_rows += 1
+            continue
+        for field in REQUIRED_COLUMNS:
+            cell = source_cells.get(field)
+            if cell is None:
+                continue
+            if cell.data_type == "n":
+                numeric_identifier_cells.append(cell.coordinate)
+            if cell.data_type == "f":
+                formula_identifier_cells.append(cell.coordinate)
+        rows.append(row)
 
     if numeric_identifier_cells:
         sample = ", ".join(numeric_identifier_cells[:8])
@@ -263,24 +301,29 @@ def _read_xlsx(data: bytes) -> list[dict[str, str]]:
     if formula_identifier_cells:
         sample = ", ".join(formula_identifier_cells[:8])
         raise ValueError(f"Identifier cells cannot contain formulas. Fix cells such as {sample}.")
-    return rows
+    return DeviceFileResult(rows, blank_rows, incomplete_rows, ignored_columns)
 
 
-def read_device_file(data: bytes, filename: str) -> list[dict[str, str]]:
+def _read_device_file_result(data: bytes, filename: str) -> DeviceFileResult:
     if len(data) > MAX_UPLOAD_BYTES:
         raise ValueError("File is larger than the 10 MB upload limit.")
     suffix = Path(filename).suffix.lower()
     if suffix == ".csv":
-        rows = _read_csv(data)
+        result = _read_csv(data)
     elif suffix == ".xlsx":
-        rows = _read_xlsx(data)
+        result = _read_xlsx(data)
     elif suffix == ".xls":
         raise ValueError("Legacy .xls files are not accepted. Save the workbook as .xlsx or CSV.")
     else:
         raise ValueError("Upload an .xlsx or .csv file.")
-    if len(rows) > MAX_ROWS:
+    total_data_rows = len(result.rows) + result.blank_rows + result.incomplete_rows
+    if total_data_rows > MAX_ROWS:
         raise ValueError(f"Workbook contains more than {MAX_ROWS:,} data rows.")
-    return rows
+    return result
+
+
+def read_device_file(data: bytes, filename: str) -> list[dict[str, str]]:
+    return _read_device_file_result(data, filename).rows
 
 
 def validate_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -359,12 +402,17 @@ def _draw_fitted_text(
     size_pt: float,
     minimum_pt: float = 3.2,
 ) -> None:
-    fitted = size_pt
-    while fitted > minimum_pt and pdfmetrics.stringWidth(text, FONT_BOLD, fitted) > max_width_pt:
-        fitted -= 0.1
+    fitted = _fitted_font_size(text, max_width_pt, size_pt, minimum_pt)
     canvas.setFillColorRGB(1, 1, 1)
     canvas.setFont(FONT_BOLD, fitted)
     canvas.drawString(x_pt, baseline_y_pt, text)
+
+
+def _fitted_font_size(text: str, max_width_pt: float, size_pt: float, minimum_pt: float = 3.2) -> float:
+    fitted = size_pt
+    while fitted > minimum_pt and pdfmetrics.stringWidth(text, FONT_BOLD, fitted) > max_width_pt:
+        fitted -= 0.1
+    return fitted
 
 
 def _draw_barcode(canvas: rl_canvas.Canvas, value: str, top_mm: float, printer_dpi: int) -> None:
@@ -466,17 +514,10 @@ def _draw_sticker(canvas: rl_canvas.Canvas, row: dict[str, str], printer_dpi: in
     model = row.get("Model", "") or "4G Dongle"
     model_y = (LABEL_HEIGHT_MM - LAYOUT["model_top"]) * mm
     device_y = (LABEL_HEIGHT_MM - LAYOUT["device_top"]) * mm
-    label_x = LAYOUT["info_label_x"] * mm
-    colon_x = LAYOUT["info_colon_x"] * mm
-    model_value_x = LAYOUT["model_value_x"] * mm
-    device_value_x = LAYOUT["device_value_x"] * mm
-    value_right = (LABEL_WIDTH_MM - 1.0) * mm
-    _draw_fitted_text(canvas, "Model", label_x, model_y, colon_x - label_x, 4.78)
-    _draw_fitted_text(canvas, ":", colon_x, model_y, 1.2 * mm, 4.78)
-    _draw_fitted_text(canvas, model, model_value_x, model_y, value_right - model_value_x, 4.78)
-    _draw_fitted_text(canvas, "Device ID", label_x, device_y, colon_x - label_x, 4.78)
-    _draw_fitted_text(canvas, ":", colon_x, device_y, 1.2 * mm, 4.78)
-    _draw_fitted_text(canvas, row["Device ID"], device_value_x, device_y, value_right - device_value_x, 4.78)
+    info_x = LAYOUT["info_x"] * mm
+    info_width = (LAYOUT["info_right"] - LAYOUT["info_x"]) * mm
+    _draw_fitted_text(canvas, f"Model:{model}", info_x, model_y, info_width, 4.78)
+    _draw_fitted_text(canvas, f"Device ID:{row['Device ID']}", info_x, device_y, info_width, 4.78)
 
     _draw_barcode(canvas, row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)
     _draw_barcode(canvas, row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)
@@ -631,11 +672,14 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
     if errors:
         raise ValueError(errors[0]["message"])
     vector_art = _svg_vector_art()
-    model = html.escape(row.get("Model", "") or "4G Dongle")
-    device = html.escape(row["Device ID"])
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
     qr_matrix = _qr_matrix(_qr_payload(row))
+    info_width_pt = (LAYOUT["info_right"] - LAYOUT["info_x"]) * mm
+    model_line = html.escape(f"Model:{row.get('Model', '') or '4G Dongle'}")
+    device_line = html.escape(f"Device ID:{row['Device ID']}")
+    model_size_mm = _fitted_font_size(f"Model:{row.get('Model', '') or '4G Dongle'}", info_width_pt, 4.78) / mm
+    device_size_mm = _fitted_font_size(f"Device ID:{row['Device ID']}", info_width_pt, 4.78) / mm
     qr_cell = LAYOUT["qr_size"] / len(qr_matrix)
     qr_parts = [
         f'<rect x="{LAYOUT["qr_x"]}" y="{LAYOUT["qr_top"]}" width="{LAYOUT["qr_size"]}" '
@@ -655,12 +699,8 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
         '<rect width="100%" height="100%" fill="#000"/>'
         f'{vector_art}'
         '<g fill="#fff" font-family="Arial,Helvetica,sans-serif" font-weight="700">'
-        f'<text x="{LAYOUT["info_label_x"]}" y="{LAYOUT["model_top"]}" font-size="1.686">Model</text>'
-        f'<text x="{LAYOUT["info_colon_x"]}" y="{LAYOUT["model_top"]}" font-size="1.686">:</text>'
-        f'<text x="{LAYOUT["model_value_x"]}" y="{LAYOUT["model_top"]}" font-size="1.686">{model}</text>'
-        f'<text x="{LAYOUT["info_label_x"]}" y="{LAYOUT["device_top"]}" font-size="1.686">Device ID</text>'
-        f'<text x="{LAYOUT["info_colon_x"]}" y="{LAYOUT["device_top"]}" font-size="1.686">:</text>'
-        f'<text x="{LAYOUT["device_value_x"]}" y="{LAYOUT["device_top"]}" font-size="1.686">{device}</text>'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="{model_size_mm:.4f}">{model_line}</text>'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["device_top"]}" font-size="{device_size_mm:.4f}">{device_line}</text>'
         f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["ccid_text_top"]}" font-size="1.460">CCID {ccid}</text>'
         f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["imei_text_top"]}" font-size="1.460">IMEI {imei}</text>'
         '</g>'
@@ -679,16 +719,21 @@ def _raise_validation(errors: list[dict[str, Any]], message: str = "Spreadsheet 
 async def upload_file(file: UploadFile = File(...)):
     data = await file.read()
     try:
-        rows = read_device_file(data, file.filename or "devices.xlsx")
+        result = _read_device_file_result(data, file.filename or "devices.xlsx")
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "File", "message": str(exc)}])
-    errors = validate_rows(rows)
+    errors = validate_rows(result.rows)
     if errors:
         _raise_validation(errors)
     return JSONResponse({
-        "columns": [*REQUIRED_COLUMNS, "Model"],
-        "rows": rows,
-        "count": len(rows),
+        "columns": list(IMPORTED_COLUMNS),
+        "rows": result.rows,
+        "count": len(result.rows),
+        "skipped": {
+            "blankRows": result.blank_rows,
+            "incompleteRows": result.incomplete_rows,
+            "ignoredColumns": list(result.ignored_columns),
+        },
         "label": {"widthMm": LABEL_WIDTH_MM, "heightMm": LABEL_HEIGHT_MM},
     })
 

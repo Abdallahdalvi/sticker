@@ -7,7 +7,7 @@ const errorSummary = document.getElementById('error-summary');
 const errorRows = document.getElementById('error-rows');
 const exportCard = document.getElementById('export-card');
 const startRecord = document.getElementById('start-record');
-const endRecord = document.getElementById('end-record');
+const recordCount = document.getElementById('record-count');
 const printerDpi = document.getElementById('printer-dpi');
 const pageFormat = document.getElementById('page-format');
 const generateButton = document.getElementById('generate-pdf');
@@ -58,9 +58,12 @@ async function parseError(response) {
 
 function updateRangeSummary() {
   if (!state.rows.length) return;
-  const start = Math.max(1, Number(startRecord.value) || 1);
-  const end = Math.min(state.rows.length, Number(endRecord.value) || state.rows.length);
-  const records = end >= start ? end - start + 1 : 0;
+  const start = Math.min(state.rows.length, Math.max(1, Number(startRecord.value) || 1));
+  const available = state.rows.length - start + 1;
+  recordCount.max = available;
+  const records = Math.min(available, Math.max(1, Number(recordCount.value) || available));
+  startRecord.value = start;
+  recordCount.value = records;
   const pages = pageFormat.value === 'a4' ? Math.ceil(records / 21) : records;
   summaryValues[0].textContent = records.toLocaleString();
   summaryValues[1].textContent = pages.toLocaleString();
@@ -107,13 +110,21 @@ fileInput.addEventListener('change', async event => {
     state.rows = data.rows;
     state.rowIndex = 0;
     startRecord.value = 1;
-    endRecord.value = data.count;
+    recordCount.value = data.count;
     startRecord.max = data.count;
-    endRecord.max = data.count;
-    [startRecord, endRecord, printerDpi, pageFormat, generateButton].forEach(control => { control.disabled = false; });
+    recordCount.max = data.count;
+    [startRecord, recordCount, printerDpi, pageFormat, generateButton].forEach(control => { control.disabled = false; });
     exportCard.classList.remove('muted');
     rowNav.classList.remove('hidden');
-    uploadStatus.textContent = `${data.count.toLocaleString()} records validated. Identifiers remain exact text.`;
+    const skipped = data.skipped || {};
+    const skippedParts = [];
+    if (skipped.incompleteRows) skippedParts.push(`${skipped.incompleteRows.toLocaleString()} incomplete row(s)`);
+    if (skipped.blankRows) skippedParts.push(`${skipped.blankRows.toLocaleString()} blank row(s)`);
+    const skippedText = skippedParts.length ? ` Skipped ${skippedParts.join(' and ')}.` : '';
+    const ignoredText = skipped.ignoredColumns?.length
+      ? ` Imported only Device ID, Model, CCID and IMEI; ignored ${skipped.ignoredColumns.length} other column(s).`
+      : '';
+    uploadStatus.textContent = `${data.count.toLocaleString()} printable records loaded.${skippedText}${ignoredText}`;
     uploadStatus.className = 'status success';
     updateRangeSummary();
     await refreshPreview();
@@ -137,15 +148,16 @@ document.getElementById('next-row').addEventListener('click', async () => {
   await refreshPreview();
 });
 
-[startRecord, endRecord].forEach(control => control.addEventListener('input', updateRangeSummary));
+[startRecord, recordCount].forEach(control => control.addEventListener('input', updateRangeSummary));
 printerDpi.addEventListener('change', refreshPreview);
 pageFormat.addEventListener('change', updateRangeSummary);
 
 generateButton.addEventListener('click', async () => {
   if (!state.rows.length) return;
   clearErrors();
-  const start = Number(startRecord.value);
-  const end = Number(endRecord.value);
+  const start = Math.min(state.rows.length, Math.max(1, Number(startRecord.value) || 1));
+  const count = Math.min(state.rows.length - start + 1, Math.max(1, Number(recordCount.value) || 1));
+  const end = start + count - 1;
   generateButton.disabled = true;
   generateButton.textContent = 'Generating…';
   try {
@@ -173,7 +185,7 @@ generateButton.addEventListener('click', async () => {
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     const mode = pageFormat.value === 'a4' ? 'A4 sticker sheet' : 'sticker';
-    uploadStatus.textContent = `${(end - start + 1).toLocaleString()} ${mode} PDF generated successfully.`;
+    uploadStatus.textContent = `${count.toLocaleString()} ${mode} PDF generated successfully.`;
     uploadStatus.className = 'status success';
   } catch (error) {
     showErrors({ detail: { message: 'PDF generation failed.', errors: [{ row: 0, field: 'PDF', message: error.message }] } });

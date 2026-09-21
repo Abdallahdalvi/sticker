@@ -61,15 +61,16 @@ docker compose -f docker-compose.casaos.yml logs -f --tail=100
 
 ## Input workbook
 
-Download `device_data_template.xlsx` from the application. Required columns are Device ID, IMEI, and CCID. Existing workbooks may keep the legacy QR Data column, but its value is not encoded.
+Download `device_data_template.xlsx` from the application. Required columns are Device ID, IMEI, and CCID. Model is optional. The importer keeps only Device ID, Model, CCID, and IMEI; all unrelated columns, including legacy QR Data, are ignored. The QR code is generated from Device ID, CCID, and IMEI.
 
 | Column | Rule |
 | --- | --- |
 | Device ID | required, maximum 32 characters, unique |
 | IMEI | required, exactly 15 digits, unique |
 | CCID | required, 18–22 digits, unique |
-| QR Data | optional legacy column; accepted but not encoded |
 | Model | optional; defaults to `4G Dongle` |
+
+Fully blank rows and incomplete rows that cannot produce a sticker are skipped. After upload, choose the starting record and exact number of stickers to include in the PDF. The upload status reports skipped rows and ignored columns.
 
 Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or formula cells are rejected instead of being silently rounded, converted to scientific notation, or stripped of leading zeros. UTF-8 CSV is also supported. Legacy `.xls` is intentionally rejected.
 
