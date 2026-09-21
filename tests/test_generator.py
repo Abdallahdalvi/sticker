@@ -71,7 +71,7 @@ def test_blank_and_incomplete_rows_are_skipped_and_extra_columns_are_ignored():
     }
 
 
-def test_long_model_and_device_id_use_compact_unaligned_lines():
+def test_long_model_and_device_id_use_fixed_size_compact_lines():
     row = {
         "Device ID": "5753120024723",
         "Model": "KRIG42ACAAI26",
@@ -79,8 +79,9 @@ def test_long_model_and_device_id_use_compact_unaligned_lines():
         "IMEI": "866224084206712",
     }
     svg = server.render_to_svg(row)
-    assert "Model:KRIG42ACAAI26" in svg
-    assert "Device ID:5753120024723" in svg
+    assert "Model: KRIG42ACAAI26" in svg
+    assert "Device ID: 5753120024723" in svg
+    assert svg.count('font-size="1.686"') == 2
     assert 'x="10.12"' not in svg
 
 

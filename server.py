@@ -515,9 +515,10 @@ def _draw_sticker(canvas: rl_canvas.Canvas, row: dict[str, str], printer_dpi: in
     model_y = (LABEL_HEIGHT_MM - LAYOUT["model_top"]) * mm
     device_y = (LABEL_HEIGHT_MM - LAYOUT["device_top"]) * mm
     info_x = LAYOUT["info_x"] * mm
-    info_width = (LAYOUT["info_right"] - LAYOUT["info_x"]) * mm
-    _draw_fitted_text(canvas, f"Model:{model}", info_x, model_y, info_width, 4.78)
-    _draw_fitted_text(canvas, f"Device ID:{row['Device ID']}", info_x, device_y, info_width, 4.78)
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.setFont(FONT_BOLD, 4.78)
+    canvas.drawString(info_x, model_y, f"Model: {model}")
+    canvas.drawString(info_x, device_y, f"Device ID: {row['Device ID']}")
 
     _draw_barcode(canvas, row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)
     _draw_barcode(canvas, row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)
@@ -675,11 +676,8 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
     qr_matrix = _qr_matrix(_qr_payload(row))
-    info_width_pt = (LAYOUT["info_right"] - LAYOUT["info_x"]) * mm
-    model_line = html.escape(f"Model:{row.get('Model', '') or '4G Dongle'}")
-    device_line = html.escape(f"Device ID:{row['Device ID']}")
-    model_size_mm = _fitted_font_size(f"Model:{row.get('Model', '') or '4G Dongle'}", info_width_pt, 4.78) / mm
-    device_size_mm = _fitted_font_size(f"Device ID:{row['Device ID']}", info_width_pt, 4.78) / mm
+    model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
+    device_line = html.escape(f"Device ID: {row['Device ID']}")
     qr_cell = LAYOUT["qr_size"] / len(qr_matrix)
     qr_parts = [
         f'<rect x="{LAYOUT["qr_x"]}" y="{LAYOUT["qr_top"]}" width="{LAYOUT["qr_size"]}" '
@@ -699,8 +697,8 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
         '<rect width="100%" height="100%" fill="#000"/>'
         f'{vector_art}'
         '<g fill="#fff" font-family="Arial,Helvetica,sans-serif" font-weight="700">'
-        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="{model_size_mm:.4f}">{model_line}</text>'
-        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["device_top"]}" font-size="{device_size_mm:.4f}">{device_line}</text>'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="1.686">{model_line}</text>'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["device_top"]}" font-size="1.686">{device_line}</text>'
         f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["ccid_text_top"]}" font-size="1.460">CCID {ccid}</text>'
         f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["imei_text_top"]}" font-size="1.460">IMEI {imei}</text>'
         '</g>'
