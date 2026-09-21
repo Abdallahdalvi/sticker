@@ -43,6 +43,11 @@ RUN python -m pip install --no-index --find-links=/wheels /wheels/* \
 
 COPY --chown=sticker:sticker server.py ./server.py
 COPY --chown=sticker:sticker static ./static
+RUN mkdir -p /app/static/fonts \
+    && python -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/google/fonts/c778ad7561ec09bb553e6a6569d893b1cb52372f/ofl/playfairdisplay/PlayfairDisplay-Bold.ttf', '/app/static/fonts/PlayfairDisplay-Bold.ttf'); urllib.request.urlretrieve('https://myjiostatic.cdn.jio.com/jiostaticresources/v05/ds20Fonts/JioType/JioType-Bold.ttf', '/app/static/fonts/JioType-Bold.ttf')" \
+    && echo "37fcc00a7503976693088bed271e64ce34fca5119181da9acf5b74bd59da8c7e  /app/static/fonts/PlayfairDisplay-Bold.ttf" | sha256sum -c - \
+    && echo "89b5173b6c4a700ccddcee31d365e41325883749cdd04685edc969d3946a16a2  /app/static/fonts/JioType-Bold.ttf" | sha256sum -c - \
+    && chmod 0644 /app/static/fonts/*.ttf
 
 USER sticker
 EXPOSE 8877

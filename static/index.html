@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bulk Sticker Generator</title>
-  <link rel="stylesheet" href="editor.css?v=14">
+  <link rel="stylesheet" href="editor.css?v=15">
 </head>
 <body>
   <header class="app-header">
@@ -77,6 +77,14 @@
                 <option value="300">300 DPI - validated only when codes fit</option>
               </select>
             </label>
+            <label class="select-label font-field">Print font
+              <select id="print-font" disabled>
+                <option value="arial" selected>Arial</option>
+                <option value="playfair">Playfair Display</option>
+                <option value="jio">Jio Type Var</option>
+              </select>
+              <small>Applied to Model, Device ID, CCID, and IMEI.</small>
+            </label>
           </div>
           <div class="data-summary" id="data-summary">
             <div><span>Records</span><strong>0</strong></div>
@@ -101,6 +109,6 @@
     </section>
   </main>
 
-  <script src="editor.js?v=14"></script>
+  <script src="editor.js?v=15"></script>
 </body>
 </html>

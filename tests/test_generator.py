@@ -83,14 +83,27 @@ def test_long_model_and_device_id_use_fixed_size_compact_lines():
     svg = server.render_to_svg(row)
     assert "Model: KRIG42ACAAI26" in svg
     assert "Device ID: 5753120024723" in svg
-    assert svg.count('font-size="1.686"') == 2
+    assert svg.count('font-size="1.6863"') == 2
+    assert "StickerDynamic" in svg
     assert 'x="10.12"' not in svg
 
 
 def test_fixed_size_device_line_fits_the_print_font():
     text = "Device ID: 5753120024723"
-    width_mm = pdfmetrics.stringWidth(text, server.FONT_BOLD, 4.78) / mm
-    assert server.LAYOUT["info_x"] + width_mm <= server.LAYOUT["info_right"]
+    for font in server.FONT_OPTIONS.values():
+        width_mm = pdfmetrics.stringWidth(text, font.pdf_name, 4.78) / mm
+        assert server.LAYOUT["info_x"] + width_mm <= server.LAYOUT["info_right"]
+
+
+def test_each_registered_font_renders_svg_and_pdf():
+    for font_key in server.FONT_OPTIONS:
+        assert "dynamic-text" in server.render_to_svg(ROWS[0], font_key=font_key)
+        assert server.render_to_pdf([ROWS[0]], font_key=font_key).getvalue().startswith(b"%PDF")
+
+
+def test_unknown_print_font_is_rejected():
+    with pytest.raises(ValueError, match="unavailable"):
+        server.render_to_pdf([ROWS[0]], font_key="missing-font")
 
 
 def test_numeric_excel_identifier_cells_are_rejected():

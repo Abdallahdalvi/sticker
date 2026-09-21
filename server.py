@@ -18,6 +18,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,8 @@ VECTOR_ART_ASSET = STATIC_DIR / "reference_vector_paths.json"
 TECH_SVG_ASSET = STATIC_DIR / "tech_section.svg"
 RELIANCE_SVG_ASSET = STATIC_DIR / "reliance_logo.svg"
 MAKE_IN_INDIA_SVG_ASSET = STATIC_DIR / "make_in_india_vector.svg"
+PLAYFAIR_FONT_ASSET = STATIC_DIR / "fonts" / "PlayfairDisplay-Bold.ttf"
+JIO_FONT_ASSET = STATIC_DIR / "fonts" / "JioType-Bold.ttf"
 
 LABEL_WIDTH_MM = 24.08
 LABEL_HEIGHT_MM = 74.08
@@ -79,6 +82,14 @@ class DeviceFileResult:
     blank_rows: int
     incomplete_rows: int
     ignored_columns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class StickerFont:
+    key: str
+    label: str
+    pdf_name: str
+    path: Path | None
 
 
 def _load_vector_art() -> dict[str, list[list[list[float]]]]:
@@ -159,26 +170,83 @@ async def prevent_stale_app_shell(request, call_next):
     return response
 
 
-def _register_fonts() -> tuple[str, str]:
-    candidates = [
-        ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
-        ("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-         "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
-        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-    ]
-    for normal_path, bold_path in candidates:
-        if Path(normal_path).exists() and Path(bold_path).exists():
-            try:
-                pdfmetrics.registerFont(TTFont("StickerArial", normal_path))
-                pdfmetrics.registerFont(TTFont("StickerArial-Bold", bold_path))
-                return "StickerArial", "StickerArial-Bold"
-            except Exception:
-                continue
-    return "Helvetica", "Helvetica-Bold"
+def _register_bold_font(pdf_name: str, candidates: list[str | Path | None]) -> tuple[str, Path] | None:
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if not path.exists():
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont(pdf_name, str(path)))
+            return pdf_name, path
+        except Exception:
+            continue
+    return None
 
 
-FONT_NORMAL, FONT_BOLD = _register_fonts()
+def _register_fonts() -> dict[str, StickerFont]:
+    options: dict[str, StickerFont] = {}
+    arial = _register_bold_font(
+        "StickerArial-Bold",
+        [
+            "C:/Windows/Fonts/arialbd.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ],
+    )
+    options["arial"] = StickerFont(
+        "arial", "Arial", arial[0] if arial else "Helvetica-Bold", arial[1] if arial else None
+    )
+
+    optional_fonts = (
+        (
+            "playfair",
+            "Playfair Display",
+            "StickerPlayfair-Bold",
+            [os.getenv("PLAYFAIR_FONT_PATH"), PLAYFAIR_FONT_ASSET],
+        ),
+        (
+            "jio",
+            "Jio Type Var",
+            "StickerJio-Bold",
+            [os.getenv("JIO_FONT_PATH"), JIO_FONT_ASSET],
+        ),
+    )
+    for key, label, pdf_name, candidates in optional_fonts:
+        registered = _register_bold_font(pdf_name, candidates)
+        if registered:
+            options[key] = StickerFont(key, label, registered[0], registered[1])
+    return options
+
+
+FONT_OPTIONS = _register_fonts()
+FONT_BOLD = FONT_OPTIONS["arial"].pdf_name
+
+
+def _get_sticker_font(font_key: str) -> StickerFont:
+    key = (font_key or "arial").strip().casefold()
+    font = FONT_OPTIONS.get(key)
+    if font is None:
+        available = ", ".join(option.label for option in FONT_OPTIONS.values())
+        raise ValueError(f"Print font {font_key!r} is unavailable. Available fonts: {available}.")
+    return font
+
+
+@lru_cache(maxsize=8)
+def _font_data_base64(path: str) -> str:
+    return base64.b64encode(Path(path).read_bytes()).decode("ascii")
+
+
+def _svg_font_style(font: StickerFont) -> str:
+    if font.path is None:
+        return '<style>.dynamic-text{font-family:Arial,Helvetica,sans-serif;font-weight:700}</style>'
+    encoded = _font_data_base64(str(font.path))
+    return (
+        '<style>@font-face{font-family:"StickerDynamic";'
+        f'src:url("data:font/ttf;base64,{encoded}") format("truetype");font-weight:700}}'
+        '.dynamic-text{font-family:"StickerDynamic";font-weight:700}</style>'
+    )
 
 
 def _clean_header(value: Any) -> str:
@@ -403,16 +471,23 @@ def _draw_fitted_text(
     max_width_pt: float,
     size_pt: float,
     minimum_pt: float = 3.2,
+    font_name: str = FONT_BOLD,
 ) -> None:
-    fitted = _fitted_font_size(text, max_width_pt, size_pt, minimum_pt)
+    fitted = _fitted_font_size(text, max_width_pt, size_pt, minimum_pt, font_name)
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.setFont(FONT_BOLD, fitted)
+    canvas.setFont(font_name, fitted)
     canvas.drawString(x_pt, baseline_y_pt, text)
 
 
-def _fitted_font_size(text: str, max_width_pt: float, size_pt: float, minimum_pt: float = 3.2) -> float:
+def _fitted_font_size(
+    text: str,
+    max_width_pt: float,
+    size_pt: float,
+    minimum_pt: float = 3.2,
+    font_name: str = FONT_BOLD,
+) -> float:
     fitted = size_pt
-    while fitted > minimum_pt and pdfmetrics.stringWidth(text, FONT_BOLD, fitted) > max_width_pt:
+    while fitted > minimum_pt and pdfmetrics.stringWidth(text, font_name, fitted) > max_width_pt:
         fitted -= 0.1
     return fitted
 
@@ -506,7 +581,12 @@ def _draw_vector_art(canvas: rl_canvas.Canvas) -> None:
     _draw_vector_separators(canvas)
 
 
-def _draw_sticker(canvas: rl_canvas.Canvas, row: dict[str, str], printer_dpi: int) -> None:
+def _draw_sticker(
+    canvas: rl_canvas.Canvas,
+    row: dict[str, str],
+    printer_dpi: int,
+    font: StickerFont,
+) -> None:
     width_pt = LABEL_WIDTH_MM * mm
     height_pt = LABEL_HEIGHT_MM * mm
     canvas.setFillColorRGB(0, 0, 0)
@@ -518,7 +598,7 @@ def _draw_sticker(canvas: rl_canvas.Canvas, row: dict[str, str], printer_dpi: in
     device_y = (LABEL_HEIGHT_MM - LAYOUT["device_top"]) * mm
     info_x = LAYOUT["info_x"] * mm
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.setFont(FONT_BOLD, 4.78)
+    canvas.setFont(font.pdf_name, 4.78)
     canvas.drawString(info_x, model_y, f"Model: {model}")
     canvas.drawString(info_x, device_y, f"Device ID: {row['Device ID']}")
 
@@ -528,8 +608,14 @@ def _draw_sticker(canvas: rl_canvas.Canvas, row: dict[str, str], printer_dpi: in
     imei_y = (LABEL_HEIGHT_MM - LAYOUT["imei_text_top"]) * mm
     barcode_text_x = LAYOUT["barcode_text_x"] * mm
     barcode_text_width = (LABEL_WIDTH_MM - LAYOUT["barcode_text_x"] - 1.0) * mm
-    _draw_fitted_text(canvas, f"CCID {row['CCID']}", barcode_text_x, ccid_y, barcode_text_width, 4.14)
-    _draw_fitted_text(canvas, f"IMEI {row['IMEI']}", barcode_text_x, imei_y, barcode_text_width, 4.14)
+    _draw_fitted_text(
+        canvas, f"CCID {row['CCID']}", barcode_text_x, ccid_y, barcode_text_width, 4.14,
+        font_name=font.pdf_name,
+    )
+    _draw_fitted_text(
+        canvas, f"IMEI {row['IMEI']}", barcode_text_x, imei_y, barcode_text_width, 4.14,
+        font_name=font.pdf_name,
+    )
 
     matrix = _qr_matrix(_qr_payload(row))
     qr_x = LAYOUT["qr_x"] * mm
@@ -549,11 +635,13 @@ def render_to_pdf(
     rows: list[dict[str, str]],
     printer_dpi: int = 600,
     page_format: str = "label",
+    font_key: str = "arial",
 ) -> io.BytesIO:
     if printer_dpi not in (300, 600):
         raise ValueError("Printer DPI must be 300 or 600.")
     if page_format not in ("label", "a4"):
         raise ValueError("Page format must be 'label' or 'a4'.")
+    font = _get_sticker_font(font_key)
     errors = validate_rows(rows)
     if errors:
         raise ValueError("Input rows failed validation.")
@@ -570,7 +658,7 @@ def render_to_pdf(
         for index, row in enumerate(rows):
             if index:
                 canvas.showPage()
-            _draw_sticker(canvas, row, printer_dpi)
+            _draw_sticker(canvas, row, printer_dpi, font)
     else:
         a4_width_mm = A4[0] / mm
         a4_height_mm = A4[1] / mm
@@ -588,7 +676,7 @@ def render_to_pdf(
             y_mm = a4_height_mm - top_mm - LABEL_HEIGHT_MM - grid_row * (LABEL_HEIGHT_MM + A4_GUTTER_MM)
             canvas.saveState()
             canvas.translate(x_mm * mm, y_mm * mm)
-            _draw_sticker(canvas, row, printer_dpi)
+            _draw_sticker(canvas, row, printer_dpi, font)
             canvas.restoreState()
     canvas.save()
     buffer.seek(0)
@@ -670,16 +758,24 @@ def _svg_barcode(value: str, top_mm: float, printer_dpi: int) -> str:
     return "".join(pieces)
 
 
-def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
+def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "arial") -> str:
     errors = validate_rows([row])
     if errors:
         raise ValueError(errors[0]["message"])
+    font = _get_sticker_font(font_key)
     vector_art = _svg_vector_art()
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
     qr_matrix = _qr_matrix(_qr_payload(row))
     model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
     device_line = html.escape(f"Device ID: {row['Device ID']}")
+    barcode_text_width_pt = (LABEL_WIDTH_MM - LAYOUT["barcode_text_x"] - 1.0) * mm
+    ccid_font_size_mm = _fitted_font_size(
+        f"CCID {row['CCID']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+    ) / mm
+    imei_font_size_mm = _fitted_font_size(
+        f"IMEI {row['IMEI']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+    ) / mm
     qr_cell = LAYOUT["qr_size"] / len(qr_matrix)
     qr_parts = [
         f'<rect x="{LAYOUT["qr_x"]}" y="{LAYOUT["qr_top"]}" width="{LAYOUT["qr_size"]}" '
@@ -696,13 +792,14 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600) -> str:
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{LABEL_WIDTH_MM}mm" height="{LABEL_HEIGHT_MM}mm" '
         f'viewBox="0 0 {LABEL_WIDTH_MM} {LABEL_HEIGHT_MM}">'
+        f'{_svg_font_style(font)}'
         '<rect width="100%" height="100%" fill="#000"/>'
         f'{vector_art}'
-        '<g fill="#fff" font-family="Arial,Helvetica,sans-serif" font-weight="700">'
-        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="1.686">{model_line}</text>'
-        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["device_top"]}" font-size="1.686">{device_line}</text>'
-        f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["ccid_text_top"]}" font-size="1.460">CCID {ccid}</text>'
-        f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["imei_text_top"]}" font-size="1.460">IMEI {imei}</text>'
+        '<g class="dynamic-text" fill="#fff">'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="{4.78 / mm:.4f}">{model_line}</text>'
+        f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["device_top"]}" font-size="{4.78 / mm:.4f}">{device_line}</text>'
+        f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["ccid_text_top"]}" font-size="{ccid_font_size_mm:.4f}">CCID {ccid}</text>'
+        f'<text x="{LAYOUT["barcode_text_x"]}" y="{LAYOUT["imei_text_top"]}" font-size="{imei_font_size_mm:.4f}">IMEI {imei}</text>'
         '</g>'
         f'{_svg_barcode(row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)}'
         f'{_svg_barcode(row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)}'
@@ -735,19 +832,21 @@ async def upload_file(file: UploadFile = File(...)):
             "ignoredColumns": list(result.ignored_columns),
         },
         "label": {"widthMm": LABEL_WIDTH_MM, "heightMm": LABEL_HEIGHT_MM},
+        "fonts": [{"value": key, "label": font.label} for key, font in FONT_OPTIONS.items()],
     })
 
 
 class PreviewRequest(BaseModel):
     row: dict[str, Any]
     printer_dpi: int = Field(default=600, alias="printerDpi")
+    font_family: str = Field(default="arial", alias="fontFamily")
 
 
 @app.post("/api/preview")
 async def preview_svg(request: PreviewRequest):
     row = {key: "" if value is None else str(value).strip() for key, value in request.row.items()}
     try:
-        svg = render_to_svg(row, request.printer_dpi)
+        svg = render_to_svg(row, request.printer_dpi, request.font_family)
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "Preview", "message": str(exc)}])
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
@@ -760,6 +859,7 @@ class GenerateRequest(BaseModel):
     end: int | None = None
     printer_dpi: int = Field(default=600, alias="printerDpi")
     page_format: str = Field(default="label", alias="pageFormat")
+    font_family: str = Field(default="arial", alias="fontFamily")
 
 
 @app.post("/api/generate")
@@ -773,7 +873,7 @@ async def generate_pdf(request: GenerateRequest):
         _raise_validation([{"row": 0, "field": "Range", "message": f"Choose a range between 1 and {len(rows)}."}])
     selected = rows[request.start - 1:end]
     try:
-        pdf = render_to_pdf(selected, request.printer_dpi, request.page_format)
+        pdf = render_to_pdf(selected, request.printer_dpi, request.page_format, request.font_family)
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "Printer", "message": str(exc)}])
     suffix = "_a4" if request.page_format == "a4" else ""

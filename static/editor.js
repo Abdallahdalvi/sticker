@@ -10,6 +10,7 @@ const startRecord = document.getElementById('start-record');
 const recordCount = document.getElementById('record-count');
 const printerDpi = document.getElementById('printer-dpi');
 const pageFormat = document.getElementById('page-format');
+const printFont = document.getElementById('print-font');
 const generateButton = document.getElementById('generate-pdf');
 const printWarning = document.getElementById('print-warning');
 const previewImage = document.getElementById('preview-image');
@@ -80,7 +81,11 @@ async function refreshPreview() {
   const response = await fetch('/api/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ row: state.rows[state.rowIndex], printerDpi: Number(printerDpi.value) }),
+    body: JSON.stringify({
+      row: state.rows[state.rowIndex],
+      printerDpi: Number(printerDpi.value),
+      fontFamily: printFont.value,
+    }),
   });
   if (!response.ok) {
     showErrors(await parseError(response));
@@ -113,7 +118,13 @@ fileInput.addEventListener('change', async event => {
     recordCount.value = data.count;
     startRecord.max = data.count;
     recordCount.max = data.count;
-    [startRecord, recordCount, printerDpi, pageFormat, generateButton].forEach(control => { control.disabled = false; });
+    const availableFonts = new Set((data.fonts || [{ value: 'arial' }]).map(font => font.value));
+    Array.from(printFont.options).forEach(option => { option.disabled = !availableFonts.has(option.value); });
+    if (printFont.selectedOptions[0]?.disabled) {
+      const firstAvailable = Array.from(printFont.options).find(option => !option.disabled);
+      if (firstAvailable) printFont.value = firstAvailable.value;
+    }
+    [startRecord, recordCount, printerDpi, pageFormat, printFont, generateButton].forEach(control => { control.disabled = false; });
     exportCard.classList.remove('muted');
     rowNav.classList.remove('hidden');
     const skipped = data.skipped || {};
@@ -150,6 +161,7 @@ document.getElementById('next-row').addEventListener('click', async () => {
 
 [startRecord, recordCount].forEach(control => control.addEventListener('input', updateRangeSummary));
 printerDpi.addEventListener('change', refreshPreview);
+printFont.addEventListener('change', refreshPreview);
 pageFormat.addEventListener('change', updateRangeSummary);
 
 generateButton.addEventListener('click', async () => {
@@ -170,6 +182,7 @@ generateButton.addEventListener('click', async () => {
         end,
         printerDpi: Number(printerDpi.value),
         pageFormat: pageFormat.value,
+        fontFamily: printFont.value,
       }),
     });
     if (!response.ok) {

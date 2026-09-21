@@ -76,6 +76,7 @@ Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or form
 
 ## Printing
 
+- Choose **Arial**, **Playfair Display**, or **Jio Type Var** before generating the PDF. The selected font is embedded in both the preview and PDF so their text metrics match.
 - Use a **600 DPI** thermal printer for 18–22 digit CCID labels at this narrow width.
 - Print at **100% / Actual Size**.
 - Disable “Fit to page”, scaling, and browser headers/footers.
@@ -83,6 +84,8 @@ Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or form
 - **A4 sticker sheets** contain 21 stickers per page in a centered 7 × 3 grid with 4 mm cutting gutters.
 
 The app calculates the Code 128 narrow-module width before export. A 300 DPI export is rejected when the selected values cannot maintain two printer dots per narrow module.
+
+The CasaOS image installs Arial-compatible Liberation Sans and downloads the fixed Playfair Display Bold and Jio Type Bold font assets from Google Fonts and Jio's official CDN during the Docker build. SHA-256 checks prevent silent font-file changes.
 
 ## Validation
 

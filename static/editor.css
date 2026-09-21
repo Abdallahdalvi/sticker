@@ -157,6 +157,8 @@ h2 { margin-bottom: 8px; font-size: 19px; letter-spacing: -.015em; }
 .field-grid label, .select-label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .select-label { margin-top: 12px; }
 .option-grid { align-items: end; }
+.font-field { grid-column: 1 / -1; }
+.font-field small { color: #78817b; font-size: 10px; font-weight: 500; }
 input[type=number], select {
   width: 100%;
   height: 42px;
