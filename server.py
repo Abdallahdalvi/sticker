@@ -162,8 +162,10 @@ async def prevent_stale_app_shell(request, call_next):
 def _register_fonts() -> tuple[str, str]:
     candidates = [
         ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
     ]
     for normal_path, bold_path in candidates:
         if Path(normal_path).exists() and Path(bold_path).exists():

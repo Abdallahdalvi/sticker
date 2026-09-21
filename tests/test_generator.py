@@ -9,6 +9,8 @@ import pytest
 from openpyxl import Workbook
 from PIL import Image
 from pypdf import PdfReader
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
 
 import server
 
@@ -83,6 +85,12 @@ def test_long_model_and_device_id_use_fixed_size_compact_lines():
     assert "Device ID: 5753120024723" in svg
     assert svg.count('font-size="1.686"') == 2
     assert 'x="10.12"' not in svg
+
+
+def test_fixed_size_device_line_fits_the_print_font():
+    text = "Device ID: 5753120024723"
+    width_mm = pdfmetrics.stringWidth(text, server.FONT_BOLD, 4.78) / mm
+    assert server.LAYOUT["info_x"] + width_mm <= server.LAYOUT["info_right"]
 
 
 def test_numeric_excel_identifier_cells_are_rejected():
