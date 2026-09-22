@@ -4,10 +4,10 @@ Local web application for producing scanner-ready Reliance 4G dongle labels from
 
 The supported label is **24.08 mm × 74.08 mm portrait**, matching the supplied reference PDF. Each accepted spreadsheet row becomes one physical-size sticker with:
 
-- dynamic Device ID text
+- dynamic S/N text (imported from either an S/N or Device ID column)
 - dynamic CCID Code 128 and readable text
 - dynamic IMEI Code 128 and readable text
-- a dynamic QR code containing Device ID, CCID, and IMEI
+- a dynamic QR code containing S/N, CCID, and IMEI
 
 ## Run
 
@@ -61,7 +61,7 @@ docker compose -f docker-compose.casaos.yml logs -f --tail=100
 
 ## Input workbook
 
-Download `device_data_template.xlsx` from the application. Required columns are Device ID, IMEI, and CCID. Model is optional. The importer keeps only Device ID, Model, CCID, and IMEI; all unrelated columns, including legacy QR Data, are ignored. The QR code is generated from Device ID, CCID, and IMEI.
+Download `device_data_template.xlsx` from the application. Required columns are Device ID (or S/N), IMEI, and CCID. Model is optional. The importer keeps only Device ID/S/N, Model, CCID, and IMEI; all unrelated columns, including legacy QR Data, are ignored. Stickers and QR payloads display the Device ID value as S/N.
 
 | Column | Rule |
 | --- | --- |

@@ -37,7 +37,7 @@
           <img id="preview-image" src="/api/reference.svg?v=13" alt="Sticker preview">
         </div>
       </div>
-      <p class="preview-note">Everything is vector. QR contains Device ID, CCID, and IMEI.</p>
+      <p class="preview-note">Everything is vector. QR contains S/N, CCID, and IMEI.</p>
     </section>
 
     <section class="controls-panel">
@@ -45,7 +45,7 @@
         <div class="step-number">1</div>
         <div class="step-content">
           <h2>Upload device data</h2>
-          <p>Only Device ID, Model, CCID, and IMEI are imported. Blank or incomplete rows are skipped. The QR code automatically contains Device ID, CCID, and IMEI.</p>
+          <p>S/N (or Device ID), Model, CCID, and IMEI are imported. Blank or incomplete rows are skipped. The QR code automatically contains S/N, CCID, and IMEI.</p>
           <label class="upload-box" for="data-file">
             <span class="upload-icon">↑</span>
             <span><strong>Choose Excel or CSV</strong><small>.xlsx or UTF-8 .csv, up to 10 MB</small></span>
@@ -83,7 +83,7 @@
                 <option value="playfair">Playfair Display</option>
                 <option value="jio">Jio Type Var</option>
               </select>
-              <small>Applied to Model, Device ID, CCID, and IMEI.</small>
+              <small>Applied to Model, S/N, CCID, and IMEI.</small>
             </label>
           </div>
           <div class="data-summary" id="data-summary">

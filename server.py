@@ -125,6 +125,9 @@ HEADER_ALIASES = {
     "device id": "Device ID",
     "deviceid": "Device ID",
     "device_id": "Device ID",
+    "s/n": "Device ID",
+    "sn": "Device ID",
+    "serial number": "Device ID",
     "imei": "IMEI",
     "ccid": "CCID",
     "iccid": "CCID",
@@ -460,7 +463,7 @@ def _qr_matrix(value: str) -> list[list[bool]]:
 
 
 def _qr_payload(row: dict[str, str]) -> str:
-    return f"Device ID: {row['Device ID']}\nCCID: {row['CCID']}\nIMEI: {row['IMEI']}"
+    return f"S/N: {row['Device ID']}\nCCID: {row['CCID']}\nIMEI: {row['IMEI']}"
 
 
 def _draw_fitted_text(
@@ -600,7 +603,7 @@ def _draw_sticker(
     canvas.setFillColorRGB(1, 1, 1)
     canvas.setFont(font.pdf_name, 4.78)
     canvas.drawString(info_x, model_y, f"Model: {model}")
-    canvas.drawString(info_x, device_y, f"Device ID: {row['Device ID']}")
+    canvas.drawString(info_x, device_y, f"S/N: {row['Device ID']}")
 
     _draw_barcode(canvas, row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)
     _draw_barcode(canvas, row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)
@@ -768,7 +771,7 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "
     imei = html.escape(row["IMEI"])
     qr_matrix = _qr_matrix(_qr_payload(row))
     model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
-    device_line = html.escape(f"Device ID: {row['Device ID']}")
+    device_line = html.escape(f"S/N: {row['Device ID']}")
     barcode_text_width_pt = (LABEL_WIDTH_MM - LAYOUT["barcode_text_x"] - 1.0) * mm
     ccid_font_size_mm = _fitted_font_size(
         f"CCID {row['CCID']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name

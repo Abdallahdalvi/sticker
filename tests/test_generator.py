@@ -53,6 +53,21 @@ def test_qr_data_column_is_not_required():
     assert server.validate_rows(rows) == []
 
 
+def test_serial_number_header_is_accepted_as_device_id():
+    csv_bytes = (
+        "S/N,IMEI,CCID\n"
+        "5753120024723,866224084206712,89918640507061277734\n"
+    ).encode()
+    rows = server.read_device_file(csv_bytes, "devices.csv")
+    assert rows[0]["Device ID"] == "5753120024723"
+
+
+def test_qr_payload_uses_serial_number_label():
+    payload = server._qr_payload(ROWS[0])
+    assert payload.startswith("S/N: K34632721\n")
+    assert "Device ID:" not in payload
+
+
 def test_blank_and_incomplete_rows_are_skipped_and_extra_columns_are_ignored():
     csv_bytes = (
         "Tester Name,Device ID,IMEI,CCID,QR Data,Model\n"
@@ -73,7 +88,7 @@ def test_blank_and_incomplete_rows_are_skipped_and_extra_columns_are_ignored():
     }
 
 
-def test_long_model_and_device_id_use_fixed_size_compact_lines():
+def test_long_model_and_serial_number_use_fixed_size_compact_lines():
     row = {
         "Device ID": "5753120024723",
         "Model": "KRIG42ACAAI26",
@@ -82,14 +97,15 @@ def test_long_model_and_device_id_use_fixed_size_compact_lines():
     }
     svg = server.render_to_svg(row)
     assert "Model: KRIG42ACAAI26" in svg
-    assert "Device ID: 5753120024723" in svg
+    assert "S/N: 5753120024723" in svg
+    assert "Device ID:" not in svg
     assert svg.count('font-size="1.6863"') == 2
     assert "StickerDynamic" in svg
     assert 'x="10.12"' not in svg
 
 
-def test_fixed_size_device_line_fits_the_print_font():
-    text = "Device ID: 5753120024723"
+def test_fixed_size_serial_number_line_fits_the_print_font():
+    text = "S/N: 5753120024723"
     for font in server.FONT_OPTIONS.values():
         width_mm = pdfmetrics.stringWidth(text, font.pdf_name, 4.78) / mm
         assert server.LAYOUT["info_x"] + width_mm <= server.LAYOUT["info_right"]
