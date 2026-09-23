@@ -53,6 +53,27 @@ def test_qr_data_column_is_not_required():
     assert server.validate_rows(rows) == []
 
 
+def test_empty_unnamed_trailing_csv_column_is_ignored():
+    csv_bytes = (
+        "S/N,IMEI,CCID,Model,\n"
+        "I26A108241,866224083845882,89918640507061557069,KRIG42ADAAI26,\n"
+        ",866224083793777,,KRIG42ADAAI26,\n"
+    ).encode()
+    result = server._read_device_file_result(csv_bytes, "devices.csv")
+    assert len(result.rows) == 1
+    assert result.incomplete_rows == 1
+    assert result.rows[0]["Device ID"] == "I26A108241"
+
+
+def test_unnamed_csv_column_with_data_is_rejected():
+    csv_bytes = (
+        "S/N,IMEI,CCID,\n"
+        "I26A108241,866224083845882,89918640507061557069,unexpected\n"
+    ).encode()
+    with pytest.raises(ValueError, match="Column 4 contains data but has no header"):
+        server.read_device_file(csv_bytes, "devices.csv")
+
+
 def test_serial_number_header_is_accepted_as_device_id():
     csv_bytes = (
         "S/N,IMEI,CCID\n"

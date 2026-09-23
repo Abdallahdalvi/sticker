@@ -267,9 +267,16 @@ def _clean_cell_value(value: Any) -> str:
 
 
 def _canonicalize_rows(headers: list[Any], raw_rows: list[list[Any]]) -> DeviceFileResult:
-    canonical_headers = [_canonical_header(h) for h in headers]
-    if any(not h for h in canonical_headers):
-        raise ValueError("Every spreadsheet column must have a header.")
+    width = max([len(headers), *(len(row) for row in raw_rows)], default=len(headers))
+    expanded_headers = list(headers) + [""] * max(0, width - len(headers))
+    normalized_headers = [_canonical_header(h) for h in expanded_headers]
+    blank_header_indexes = [idx for idx, header in enumerate(normalized_headers) if not header]
+    for idx in blank_header_indexes:
+        if any(idx < len(row) and _clean_cell_value(row[idx]) for row in raw_rows):
+            raise ValueError(f"Column {idx + 1} contains data but has no header.")
+
+    kept_indexes = [idx for idx, header in enumerate(normalized_headers) if header]
+    canonical_headers = [normalized_headers[idx] for idx in kept_indexes]
     duplicates = sorted({h for h in canonical_headers if canonical_headers.count(h) > 1})
     if duplicates:
         raise ValueError(f"Duplicate columns after normalization: {', '.join(duplicates)}")
@@ -283,10 +290,10 @@ def _canonicalize_rows(headers: list[Any], raw_rows: list[list[Any]]) -> DeviceF
     blank_rows = 0
     incomplete_rows = 0
     for raw in raw_rows:
-        values = list(raw) + [""] * max(0, len(canonical_headers) - len(raw))
+        values = list(raw) + [""] * max(0, width - len(raw))
         source_row = {
-            header: _clean_cell_value(values[idx])
-            for idx, header in enumerate(canonical_headers)
+            header: _clean_cell_value(values[source_idx])
+            for header, source_idx in zip(canonical_headers, kept_indexes)
         }
         row = {field: source_row.get(field, "") for field in IMPORTED_COLUMNS}
         if not any(row.values()):
@@ -324,16 +331,14 @@ def _read_xlsx(data: bytes) -> DeviceFileResult:
         raise ValueError("The XLSX file is empty.") from exc
 
     headers = [_canonical_header(cell.value) for cell in header_cells]
-    if any(not header for header in headers):
-        raise ValueError("Every spreadsheet column must have a header.")
-    duplicates = sorted({h for h in headers if headers.count(h) > 1})
+    duplicates = sorted({h for h in headers if h and headers.count(h) > 1})
     if duplicates:
         raise ValueError(f"Duplicate columns after normalization: {', '.join(duplicates)}")
 
     missing = [field for field in REQUIRED_COLUMNS if field not in headers]
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(missing)}")
-    ignored_columns = tuple(header for header in headers if header not in IMPORTED_COLUMNS)
+    ignored_columns = tuple(header for header in headers if header and header not in IMPORTED_COLUMNS)
 
     rows: list[dict[str, str]] = []
     blank_rows = 0
@@ -346,6 +351,10 @@ def _read_xlsx(data: bytes) -> DeviceFileResult:
         for idx, header in enumerate(headers):
             cell = cells[idx] if idx < len(cells) else None
             value = None if cell is None else cell.value
+            if not header:
+                if _clean_cell_value(value):
+                    raise ValueError(f"Column {idx + 1} contains data but has no header.")
+                continue
             source_cells[header] = cell
             source_row[header] = _clean_cell_value(value)
         row = {field: source_row.get(field, "") for field in IMPORTED_COLUMNS}

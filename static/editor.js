@@ -133,7 +133,7 @@ fileInput.addEventListener('change', async event => {
     if (skipped.blankRows) skippedParts.push(`${skipped.blankRows.toLocaleString()} blank row(s)`);
     const skippedText = skippedParts.length ? ` Skipped ${skippedParts.join(' and ')}.` : '';
     const ignoredText = skipped.ignoredColumns?.length
-      ? ` Imported only Device ID, Model, CCID and IMEI; ignored ${skipped.ignoredColumns.length} other column(s).`
+      ? ` Imported only S/N, Model, CCID and IMEI; ignored ${skipped.ignoredColumns.length} other column(s).`
       : '';
     uploadStatus.textContent = `${data.count.toLocaleString()} printable records loaded.${skippedText}${ignoredText}`;
     uploadStatus.className = 'status success';
