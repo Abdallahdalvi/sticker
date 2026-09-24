@@ -137,10 +137,12 @@ def test_content_shift_balances_top_and_bottom_margins():
 
 
 def test_larger_qr_keeps_the_right_edge_and_balanced_bottom_margin():
-    assert server.LAYOUT["qr_size"] == pytest.approx(7.2)
-    assert server.LAYOUT["qr_x"] + server.LAYOUT["qr_size"] == pytest.approx(22.2)
+    assert server.LAYOUT["qr_size"] == pytest.approx(8.5)
+    assert server.LAYOUT["qr_x"] + server.LAYOUT["qr_size"] == pytest.approx(
+        server.SEPARATOR_X_END_MM
+    )
     svg = server.render_to_svg(ROWS[0])
-    assert 'width="7.2" height="7.2" fill="#fff"' in svg
+    assert 'width="8.5" height="8.5" fill="#fff"' in svg
 
 
 def test_technical_section_crops_outer_whitespace_and_tightens_separators():
@@ -153,10 +155,14 @@ def test_technical_section_crops_outer_whitespace_and_tightens_separators():
     assert 'preserveAspectRatio="none"' in vector_art
 
 
-def test_lion_is_enlarged_and_balanced_with_qr():
-    assert server.MAKE_IN_INDIA_WIDTH_MM == pytest.approx(12.08)
-    assert server.MAKE_IN_INDIA_HEIGHT_MM == pytest.approx(5.5)
+def test_lion_and_qr_share_content_guides_and_bottom_alignment():
+    assert server.MAKE_IN_INDIA_WIDTH_MM == pytest.approx(12.08 * 0.85)
+    assert server.MAKE_IN_INDIA_HEIGHT_MM == pytest.approx(5.5 * 0.85)
+    assert server.MAKE_IN_INDIA_X_MM == pytest.approx(server.SEPARATOR_X_START_MM)
     assert server.MAKE_IN_INDIA_X_MM + server.MAKE_IN_INDIA_WIDTH_MM < server.LAYOUT["qr_x"]
+    lion_bottom = server.MAKE_IN_INDIA_TOP_MM + server.MAKE_IN_INDIA_HEIGHT_MM
+    qr_bottom = server.LAYOUT["qr_top"] + server.LAYOUT["qr_size"]
+    assert lion_bottom == pytest.approx(qr_bottom)
 
 
 def test_qr_uses_reduced_three_module_quiet_zone():
