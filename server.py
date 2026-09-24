@@ -50,6 +50,7 @@ JIO_FONT_ASSET = STATIC_DIR / "fonts" / "JioType-Bold.ttf"
 
 LABEL_WIDTH_MM = 24.08
 LABEL_HEIGHT_MM = 74.08
+CONTENT_UP_MM = 1.88
 A4_COLUMNS = 7
 A4_ROWS = 3
 A4_LABELS_PER_PAGE = A4_COLUMNS * A4_ROWS
@@ -603,6 +604,8 @@ def _draw_sticker(
     height_pt = LABEL_HEIGHT_MM * mm
     canvas.setFillColorRGB(0, 0, 0)
     canvas.rect(0, 0, width_pt, height_pt, fill=1, stroke=0)
+    canvas.saveState()
+    canvas.translate(0, CONTENT_UP_MM * mm)
     _draw_vector_art(canvas)
 
     model = row.get("Model", "") or "4G Dongle"
@@ -641,6 +644,7 @@ def _draw_sticker(
         for col_idx, dark in enumerate(cells):
             if dark:
                 canvas.rect(qr_x + col_idx * cell, qr_y + (len(matrix) - row_idx - 1) * cell, cell, cell, fill=1, stroke=0)
+    canvas.restoreState()
 
 
 def render_to_pdf(
@@ -806,6 +810,7 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "
         f'viewBox="0 0 {LABEL_WIDTH_MM} {LABEL_HEIGHT_MM}">'
         f'{_svg_font_style(font)}'
         '<rect width="100%" height="100%" fill="#000"/>'
+        f'<g transform="translate(0 -{CONTENT_UP_MM:.4f})">'
         f'{vector_art}'
         '<g class="dynamic-text" fill="#fff">'
         f'<text x="{LAYOUT["info_x"]}" y="{LAYOUT["model_top"]}" font-size="{4.78 / mm:.4f}">{model_line}</text>'
@@ -816,6 +821,7 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "
         f'{_svg_barcode(row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)}'
         f'{_svg_barcode(row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)}'
         f'{"".join(qr_parts)}'
+        '</g>'
         '</svg>'
     )
 
@@ -913,7 +919,9 @@ async def reference_svg():
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{LABEL_WIDTH_MM}mm" height="{LABEL_HEIGHT_MM}mm" '
         f'viewBox="0 0 {LABEL_WIDTH_MM} {LABEL_HEIGHT_MM}">'
         '<rect width="100%" height="100%" fill="#000"/>'
+        f'<g transform="translate(0 -{CONTENT_UP_MM:.4f})">'
         f'{_svg_vector_art()}'
+        '</g>'
         '</svg>'
     )
     return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "no-store"})

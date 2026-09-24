@@ -123,6 +123,17 @@ def test_long_model_and_serial_number_use_fixed_size_compact_lines():
     assert svg.count('font-size="1.6863"') == 2
     assert "StickerDynamic" in svg
     assert 'x="10.12"' not in svg
+    assert f'transform="translate(0 -{server.CONTENT_UP_MM:.4f})"' in svg
+
+
+def test_content_shift_balances_top_and_bottom_margins():
+    top_margin = server.RELIANCE_TOP_MM - server.CONTENT_UP_MM
+    bottom_margin = (
+        server.LABEL_HEIGHT_MM
+        - (server.LAYOUT["qr_top"] + server.LAYOUT["qr_size"] - server.CONTENT_UP_MM)
+    )
+    assert top_margin == pytest.approx(bottom_margin, abs=0.01)
+    assert top_margin > 2.4
 
 
 def test_fixed_size_serial_number_line_fits_the_print_font():
