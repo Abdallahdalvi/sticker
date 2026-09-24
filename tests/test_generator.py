@@ -136,6 +136,20 @@ def test_content_shift_balances_top_and_bottom_margins():
     assert top_margin > 2.4
 
 
+def test_larger_qr_keeps_the_right_edge_and_balanced_bottom_margin():
+    assert server.LAYOUT["qr_size"] == pytest.approx(7.2)
+    assert server.LAYOUT["qr_x"] + server.LAYOUT["qr_size"] == pytest.approx(22.2)
+    svg = server.render_to_svg(ROWS[0])
+    assert 'width="7.2" height="7.2" fill="#fff"' in svg
+
+
+def test_technical_section_is_tightened_vertically_only():
+    assert server.TECH_SECTION_WIDTH_MM == pytest.approx(22.67)
+    assert server.TECH_SECTION_HEIGHT_MM == pytest.approx(21.27)
+    assert server.LOWER_SEPARATOR_Y_MM == pytest.approx(43.32)
+    assert 'preserveAspectRatio="none"' in server._svg_vector_art()
+
+
 def test_fixed_size_serial_number_line_fits_the_print_font():
     text = "S/N: 5753120024723"
     for font in server.FONT_OPTIONS.values():

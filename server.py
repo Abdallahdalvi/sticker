@@ -56,19 +56,20 @@ A4_ROWS = 3
 A4_LABELS_PER_PAGE = A4_COLUMNS * A4_ROWS
 A4_GUTTER_MM = 4.0
 UPPER_SEPARATOR_Y_MM = 22.05
-LOWER_SEPARATOR_Y_MM = 44.72
+TECH_SECTION_WIDTH_MM = 22.67
+TECH_SECTION_HEIGHT_MM = 21.27
+LOWER_SEPARATOR_Y_MM = UPPER_SEPARATOR_Y_MM + TECH_SECTION_HEIGHT_MM
 SEPARATOR_X_START_MM = 1.75
 SEPARATOR_X_END_MM = 22.05
 SEPARATOR_WIDTH_MM = 0.08
 SEPARATOR_COVER_HEIGHT_MM = 0.80
-TECH_SECTION_SIZE_MM = LOWER_SEPARATOR_Y_MM - UPPER_SEPARATOR_Y_MM
-TECH_SECTION_X_MM = (LABEL_WIDTH_MM - TECH_SECTION_SIZE_MM) / 2
+TECH_SECTION_X_MM = (LABEL_WIDTH_MM - TECH_SECTION_WIDTH_MM) / 2
 RELIANCE_X_MM = 2.5392
 RELIANCE_TOP_MM = 4.3178
 RELIANCE_WIDTH_MM = 19.2132
 RELIANCE_HEIGHT_MM = 14.4350
 MAKE_IN_INDIA_X_MM = 1.6928
-MAKE_IN_INDIA_TOP_MM = 68.4660
+MAKE_IN_INDIA_TOP_MM = 67.0660
 MAKE_IN_INDIA_WIDTH_MM = 9.4796
 MAKE_IN_INDIA_HEIGHT_MM = 4.3280
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -146,19 +147,19 @@ HEADER_ALIASES = {
 LAYOUT = {
     "info_x": 1.81,
     "info_right": 23.08,
-    "model_top": 47.69,
-    "device_top": 50.61,
+    "model_top": 46.29,
+    "device_top": 49.21,
     "barcode_x": 2.10,
     "barcode_w": 19.85,
     "barcode_h": 5.00,
     "barcode_text_x": 2.10,
-    "ccid_barcode_top": 52.49,
-    "ccid_text_top": 58.89,
-    "imei_barcode_top": 60.28,
-    "imei_text_top": 66.72,
-    "qr_x": 16.40,
-    "qr_top": 67.72,
-    "qr_size": 5.80,
+    "ccid_barcode_top": 51.09,
+    "ccid_text_top": 57.49,
+    "imei_barcode_top": 58.88,
+    "imei_text_top": 65.32,
+    "qr_x": 15.00,
+    "qr_top": 66.32,
+    "qr_size": 7.20,
 }
 
 
@@ -543,16 +544,20 @@ def _draw_svg_in_box(
     top_mm: float,
     width_mm: float,
     height_mm: float,
+    preserve_aspect: bool = True,
 ) -> None:
-    """Place one supplied SVG in a fixed physical box without distortion."""
-    scale = min((width_mm * mm) / drawing.width, (height_mm * mm) / drawing.height)
-    rendered_width = drawing.width * scale
-    rendered_height = drawing.height * scale
+    """Place one supplied SVG in a fixed physical box, optionally preserving its aspect ratio."""
+    scale_x = (width_mm * mm) / drawing.width
+    scale_y = (height_mm * mm) / drawing.height
+    if preserve_aspect:
+        scale_x = scale_y = min(scale_x, scale_y)
+    rendered_width = drawing.width * scale_x
+    rendered_height = drawing.height * scale_y
     left = x_mm * mm + (width_mm * mm - rendered_width) / 2
     bottom = (LABEL_HEIGHT_MM - top_mm - height_mm) * mm + (height_mm * mm - rendered_height) / 2
     canvas.saveState()
     canvas.translate(left, bottom)
-    canvas.scale(scale, scale)
+    canvas.scale(scale_x, scale_y)
     renderPDF.draw(drawing, canvas, 0, 0)
     canvas.restoreState()
 
@@ -580,8 +585,9 @@ def _draw_vector_art(canvas: rl_canvas.Canvas) -> None:
         TECH_DRAWING,
         TECH_SECTION_X_MM,
         UPPER_SEPARATOR_Y_MM,
-        TECH_SECTION_SIZE_MM,
-        TECH_SECTION_SIZE_MM,
+        TECH_SECTION_WIDTH_MM,
+        TECH_SECTION_HEIGHT_MM,
+        preserve_aspect=False,
     )
     _draw_svg_in_box(
         canvas,
@@ -722,8 +728,8 @@ def _svg_vector_art() -> str:
     )
     tech_section = (
         f'<svg x="{TECH_SECTION_X_MM:.4f}" y="{UPPER_SEPARATOR_Y_MM:.4f}" '
-        f'width="{TECH_SECTION_SIZE_MM:.4f}" height="{TECH_SECTION_SIZE_MM:.4f}" '
-        'viewBox="0 0 810 809.999993" preserveAspectRatio="xMidYMid meet">'
+        f'width="{TECH_SECTION_WIDTH_MM:.4f}" height="{TECH_SECTION_HEIGHT_MM:.4f}" '
+        'viewBox="0 0 810 809.999993" preserveAspectRatio="none">'
         f'{TECH_SVG_INNER}</svg>'
     )
     reliance_logo = (
