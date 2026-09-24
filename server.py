@@ -55,9 +55,11 @@ A4_COLUMNS = 7
 A4_ROWS = 3
 A4_LABELS_PER_PAGE = A4_COLUMNS * A4_ROWS
 A4_GUTTER_MM = 4.0
-UPPER_SEPARATOR_Y_MM = 22.05
+UPPER_SEPARATOR_Y_MM = 20.85
 TECH_SECTION_WIDTH_MM = 22.67
-TECH_SECTION_HEIGHT_MM = 21.27
+TECH_SECTION_VIEWBOX_Y = 45.0
+TECH_SECTION_VIEWBOX_HEIGHT = 720.0
+TECH_SECTION_HEIGHT_MM = 18.91
 LOWER_SEPARATOR_Y_MM = UPPER_SEPARATOR_Y_MM + TECH_SECTION_HEIGHT_MM
 SEPARATOR_X_START_MM = 1.75
 SEPARATOR_X_END_MM = 22.05
@@ -68,10 +70,11 @@ RELIANCE_X_MM = 2.5392
 RELIANCE_TOP_MM = 4.3178
 RELIANCE_WIDTH_MM = 19.2132
 RELIANCE_HEIGHT_MM = 14.4350
-MAKE_IN_INDIA_X_MM = 1.6928
-MAKE_IN_INDIA_TOP_MM = 67.0660
-MAKE_IN_INDIA_WIDTH_MM = 9.4796
-MAKE_IN_INDIA_HEIGHT_MM = 4.3280
+MAKE_IN_INDIA_X_MM = 1.30
+MAKE_IN_INDIA_TOP_MM = 67.17
+MAKE_IN_INDIA_WIDTH_MM = 12.08
+MAKE_IN_INDIA_HEIGHT_MM = 5.50
+QR_QUIET_ZONE_MODULES = 3
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 20_000
 REQUIRED_COLUMNS = ("Device ID", "IMEI", "CCID")
@@ -104,20 +107,40 @@ def _load_vector_art() -> dict[str, list[list[list[float]]]]:
 VECTOR_ART = _load_vector_art()
 
 
-def _load_svg_asset(asset: Path, label: str) -> tuple[str, Any]:
+def _load_svg_asset(
+    asset: Path,
+    label: str,
+    drawing_viewbox: tuple[float, float, float, float] | None = None,
+) -> tuple[str, Any]:
     if not asset.exists():
         raise RuntimeError(f"{label} SVG is missing: {asset}")
     source = asset.read_text(encoding="utf-8")
     match = re.search(r"<svg\b[^>]*>(.*)</svg>\s*$", source, flags=re.DOTALL)
     if not match:
         raise RuntimeError(f"{label} SVG is invalid: {asset}")
-    drawing = svg2rlg(str(asset))
+    drawing_source: str | io.BytesIO = str(asset)
+    if drawing_viewbox is not None:
+        view_x, view_y, view_width, view_height = drawing_viewbox
+        cropped_source = re.sub(
+            r'viewBox="[^"]+"',
+            f'viewBox="{view_x:g} {view_y:g} {view_width:g} {view_height:g}"',
+            source,
+            count=1,
+        )
+        cropped_source = re.sub(r'width="[^"]+"', f'width="{view_width:g}"', cropped_source, count=1)
+        cropped_source = re.sub(r'height="[^"]+"', f'height="{view_height:g}"', cropped_source, count=1)
+        drawing_source = io.BytesIO(cropped_source.encode("utf-8"))
+    drawing = svg2rlg(drawing_source)
     if drawing is None:
         raise RuntimeError(f"{label} SVG could not be parsed: {asset}")
     return match.group(1), drawing
 
 
-TECH_SVG_INNER, TECH_DRAWING = _load_svg_asset(TECH_SVG_ASSET, "Technical section")
+TECH_SVG_INNER, TECH_DRAWING = _load_svg_asset(
+    TECH_SVG_ASSET,
+    "Technical section",
+    drawing_viewbox=(0, TECH_SECTION_VIEWBOX_Y, 810, TECH_SECTION_VIEWBOX_HEIGHT),
+)
 RELIANCE_SVG_INNER, RELIANCE_DRAWING = _load_svg_asset(RELIANCE_SVG_ASSET, "Reliance logo")
 MAKE_IN_INDIA_SVG_INNER, MAKE_IN_INDIA_DRAWING = _load_svg_asset(
     MAKE_IN_INDIA_SVG_ASSET, "Make in India"
@@ -147,16 +170,16 @@ HEADER_ALIASES = {
 LAYOUT = {
     "info_x": 1.81,
     "info_right": 23.08,
-    "model_top": 46.29,
-    "device_top": 49.21,
+    "model_top": 43.29,
+    "device_top": 46.21,
     "barcode_x": 2.10,
     "barcode_w": 19.85,
     "barcode_h": 5.00,
     "barcode_text_x": 2.10,
-    "ccid_barcode_top": 51.09,
-    "ccid_text_top": 57.49,
-    "imei_barcode_top": 58.88,
-    "imei_text_top": 65.32,
+    "ccid_barcode_top": 48.09,
+    "ccid_text_top": 54.49,
+    "imei_barcode_top": 55.88,
+    "imei_text_top": 62.32,
     "qr_x": 15.00,
     "qr_top": 66.32,
     "qr_size": 7.20,
@@ -467,7 +490,12 @@ def _barcode_pattern(value: str) -> tuple[str, int]:
 
 
 def _qr_matrix(value: str) -> list[list[bool]]:
-    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=1, border=4)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=1,
+        border=QR_QUIET_ZONE_MODULES,
+    )
     qr.add_data(value)
     qr.make(fit=True)
     return qr.get_matrix()
@@ -729,7 +757,8 @@ def _svg_vector_art() -> str:
     tech_section = (
         f'<svg x="{TECH_SECTION_X_MM:.4f}" y="{UPPER_SEPARATOR_Y_MM:.4f}" '
         f'width="{TECH_SECTION_WIDTH_MM:.4f}" height="{TECH_SECTION_HEIGHT_MM:.4f}" '
-        'viewBox="0 0 810 809.999993" preserveAspectRatio="none">'
+        f'viewBox="0 {TECH_SECTION_VIEWBOX_Y:.0f} 810 {TECH_SECTION_VIEWBOX_HEIGHT:.0f}" '
+        'preserveAspectRatio="none">'
         f'{TECH_SVG_INNER}</svg>'
     )
     reliance_logo = (

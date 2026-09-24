@@ -143,11 +143,27 @@ def test_larger_qr_keeps_the_right_edge_and_balanced_bottom_margin():
     assert 'width="7.2" height="7.2" fill="#fff"' in svg
 
 
-def test_technical_section_is_tightened_vertically_only():
+def test_technical_section_crops_outer_whitespace_and_tightens_separators():
     assert server.TECH_SECTION_WIDTH_MM == pytest.approx(22.67)
-    assert server.TECH_SECTION_HEIGHT_MM == pytest.approx(21.27)
-    assert server.LOWER_SEPARATOR_Y_MM == pytest.approx(43.32)
-    assert 'preserveAspectRatio="none"' in server._svg_vector_art()
+    assert server.TECH_SECTION_HEIGHT_MM == pytest.approx(18.91)
+    assert server.UPPER_SEPARATOR_Y_MM == pytest.approx(20.85)
+    assert server.LOWER_SEPARATOR_Y_MM == pytest.approx(39.76)
+    vector_art = server._svg_vector_art()
+    assert 'viewBox="0 45 810 720"' in vector_art
+    assert 'preserveAspectRatio="none"' in vector_art
+
+
+def test_lion_is_enlarged_and_balanced_with_qr():
+    assert server.MAKE_IN_INDIA_WIDTH_MM == pytest.approx(12.08)
+    assert server.MAKE_IN_INDIA_HEIGHT_MM == pytest.approx(5.5)
+    assert server.MAKE_IN_INDIA_X_MM + server.MAKE_IN_INDIA_WIDTH_MM < server.LAYOUT["qr_x"]
+
+
+def test_qr_uses_reduced_three_module_quiet_zone():
+    matrix = server._qr_matrix(server._qr_payload(ROWS[0]))
+    assert server.QR_QUIET_ZONE_MODULES == 3
+    assert all(not cell for row in matrix[:3] for cell in row)
+    assert any(matrix[3])
 
 
 def test_fixed_size_serial_number_line_fits_the_print_font():
