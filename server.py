@@ -197,24 +197,23 @@ LAYOUT = {
 COMPACT_LAYOUT = {
     "info_x": 1.81,
     "info_right": 23.08,
-    "dc_top": 2.65,
-    "separator_top": 4.10,
-    "model_top": 6.10,
-    "device_top": 8.20,
+    "dc_top": 2.50,
+    "model_top": 5.50,
+    "device_top": 7.85,
     "barcode_x": 2.10,
     "barcode_w": 19.85,
-    "barcode_h": 3.50,
+    "barcode_h": 3.80,
     "barcode_text_x": 2.10,
-    "ccid_barcode_top": 8.95,
-    "ccid_text_top": 13.85,
-    "imei_barcode_top": 14.55,
-    "imei_text_top": 19.45,
+    "ccid_barcode_top": 8.75,
+    "ccid_text_top": 13.95,
+    "imei_barcode_top": 14.85,
+    "imei_text_top": 20.05,
     "qr_x": QR_X_MM,
-    "qr_top": 24.30,
+    "qr_top": 22.80,
     "qr_size": QR_SIZE_MM,
-    "bottom_art_bottom": 32.80,
+    "bottom_art_bottom": 31.30,
     "make_in_india_x": MAKE_IN_INDIA_X_MM,
-    "make_in_india_top": 32.80 - MAKE_IN_INDIA_HEIGHT_MM,
+    "make_in_india_top": 31.30 - MAKE_IN_INDIA_HEIGHT_MM,
     "make_in_india_w": MAKE_IN_INDIA_WIDTH_MM,
     "make_in_india_h": MAKE_IN_INDIA_HEIGHT_MM,
 }
@@ -752,11 +751,6 @@ def _draw_compact_sticker(
     canvas.setFillColorRGB(1, 1, 1)
     canvas.setFont(font.pdf_name, 4.78)
     canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["dc_top"]) * mm, "DC-Input: 5V - 12V")
-    canvas.setStrokeColorRGB(0.61, 0.62, 0.59)
-    canvas.setLineWidth(SEPARATOR_WIDTH_MM * mm)
-    canvas.setLineCap(1)
-    line_y = (COMPACT_LABEL_HEIGHT_MM - layout["separator_top"]) * mm
-    canvas.line(SEPARATOR_X_START_MM * mm, line_y, SEPARATOR_X_END_MM * mm, line_y)
 
     model = row.get("Model", "") or "4G Dongle"
     canvas.setFillColorRGB(1, 1, 1)
@@ -1012,9 +1006,6 @@ def _render_compact_svg(row: dict[str, str], printer_dpi: int, font: StickerFont
         f'<text x="{layout["barcode_text_x"]}" y="{layout["ccid_text_top"]}" font-size="{ccid_font_size_mm:.4f}">CCID {ccid}</text>'
         f'<text x="{layout["barcode_text_x"]}" y="{layout["imei_text_top"]}" font-size="{imei_font_size_mm:.4f}">IMEI {imei}</text>'
         '</g>'
-        f'<line x1="{SEPARATOR_X_START_MM}" y1="{layout["separator_top"]}" '
-        f'x2="{SEPARATOR_X_END_MM}" y2="{layout["separator_top"]}" stroke="#9b9d96" '
-        f'stroke-width="{SEPARATOR_WIDTH_MM}" stroke-linecap="round"/>'
         f'{_svg_barcode(row["CCID"], layout["ccid_barcode_top"], printer_dpi, layout)}'
         f'{_svg_barcode(row["IMEI"], layout["imei_barcode_top"], printer_dpi, layout)}'
         f'{make_in_india}'

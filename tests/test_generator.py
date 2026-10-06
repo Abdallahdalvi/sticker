@@ -230,6 +230,18 @@ def test_compact_mode_has_34_mm_page_and_only_requested_fixed_artwork():
     assert 'viewBox="0 0 1600 1203"' not in svg
     assert 'viewBox="0 45 810 720"' not in svg
     assert "Connectivity" not in svg
+    assert "separator_top" not in server.COMPACT_LAYOUT
+    assert "<line " not in svg
+
+    layout = server.COMPACT_LAYOUT
+    assert layout["model_top"] - layout["dc_top"] == pytest.approx(3.0)
+    assert layout["ccid_text_top"] - (
+        layout["ccid_barcode_top"] + layout["barcode_h"]
+    ) == pytest.approx(1.4)
+    assert layout["imei_text_top"] - (
+        layout["imei_barcode_top"] + layout["barcode_h"]
+    ) == pytest.approx(1.4)
+    assert layout["qr_top"] - layout["imei_text_top"] < 3.0
 
     data = server.render_to_pdf([ROWS[0]], sticker_mode="compact").getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]
