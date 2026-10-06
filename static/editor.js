@@ -17,6 +17,7 @@ const labelPreview = document.querySelector('.label-preview');
 const generateButton = document.getElementById('generate-pdf');
 const printWarning = document.getElementById('print-warning');
 const previewImage = document.getElementById('preview-image');
+const previewNote = document.getElementById('preview-note');
 const previewTitle = document.getElementById('preview-title');
 const rowNav = document.getElementById('row-nav');
 const rowLabel = document.getElementById('row-label');
@@ -136,6 +137,9 @@ fileInput.addEventListener('change', async event => {
     recordCount.value = data.count;
     startRecord.max = data.count;
     recordCount.max = data.count;
+    previewNote.textContent = data.qrMode === 'serial'
+      ? 'Everything is vector. QR contains the SR. NO. imported from the PDF.'
+      : 'Everything is vector. QR contains S/N, CCID, and IMEI.';
     const availableFonts = new Set((data.fonts || [{ value: 'arial' }]).map(font => font.value));
     Array.from(printFont.options).forEach(option => { option.disabled = !availableFonts.has(option.value); });
     if (printFont.selectedOptions[0]?.disabled) {

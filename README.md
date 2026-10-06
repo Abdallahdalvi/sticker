@@ -1,6 +1,6 @@
 # Bulk Sticker Generator
 
-Local web application for producing scanner-ready Reliance 4G dongle labels from Excel or CSV data.
+Local web application for producing scanner-ready Reliance 4G dongle labels from Excel, CSV, or supported PDF data.
 
 The generator supports two labels with the same **24.08 mm** width:
 
@@ -64,7 +64,7 @@ docker compose -f docker-compose.casaos.yml ps
 docker compose -f docker-compose.casaos.yml logs -f --tail=100
 ```
 
-## Input workbook
+## Input data
 
 Download `device_data_template.xlsx` from the application. Required columns are Device ID (or S/N), IMEI, and CCID. Model is optional. The importer keeps only Device ID/S/N, Model, CCID, and IMEI; all unrelated columns, including legacy QR Data, are ignored. Stickers and QR payloads display the Device ID value as S/N.
 
@@ -76,6 +76,17 @@ Download `device_data_template.xlsx` from the application. Required columns are 
 | Model | optional; defaults to `4G Dongle` |
 
 Fully blank rows and incomplete rows that cannot produce a sticker are skipped. After upload, choose the starting record and exact number of stickers to include in the PDF. The upload status reports skipped rows and ignored columns.
+
+### PDF table import
+
+Text-based PDF tables containing `IMEI NUMBER`, `CCID`, and `SR. NO.` columns are also supported. For these imports:
+
+- `SR. NO.` becomes the sticker S/N
+- model is fixed to `KRIG42ACAAI26`
+- IMEI and CCID retain their normal text and Code 128 output
+- the QR payload contains only the imported `SR. NO.` value
+
+Image-only/scanned PDFs are rejected because their values cannot be extracted reliably without OCR.
 
 Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or formula cells are rejected instead of being silently rounded, converted to scientific notation, or stripped of leading zeros. UTF-8 CSV is also supported. Legacy `.xls` is intentionally rejected.
 

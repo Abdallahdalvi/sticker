@@ -11,6 +11,7 @@ from PIL import Image
 from pypdf import PdfReader
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen import canvas as rl_canvas
 
 import server
 
@@ -87,6 +88,54 @@ def test_qr_payload_uses_serial_number_label():
     payload = server._qr_payload(ROWS[0])
     assert payload.startswith("S/N: K34632721\n")
     assert "Device ID:" not in payload
+
+
+def test_pdf_table_import_maps_sr_number_and_qr_payload():
+    buffer = io.BytesIO()
+    canvas = rl_canvas.Canvas(buffer)
+    canvas.drawString(30, 800, "SCAN DEVICE IMEI NUMBER CCID SR. NO.")
+    canvas.drawString(
+        30,
+        780,
+        "866224083735190;MPM26EA0D006416866224083735190 89918640507061911506 AD1",
+    )
+    canvas.drawString(
+        30,
+        760,
+        "866224085287182;MPN26EN01003631866224085287182 89918640507061911910 AD2",
+    )
+    canvas.save()
+
+    result = server._read_device_file_result(buffer.getvalue(), "devices.pdf")
+    assert result.blank_rows == 0
+    assert result.incomplete_rows == 0
+    assert result.rows == [
+        {
+            "Device ID": "AD1",
+            "Model": "KRIG42ACAAI26",
+            "CCID": "89918640507061911506",
+            "IMEI": "866224083735190",
+            server.QR_OVERRIDE_FIELD: "AD1",
+        },
+        {
+            "Device ID": "AD2",
+            "Model": "KRIG42ACAAI26",
+            "CCID": "89918640507061911910",
+            "IMEI": "866224085287182",
+            server.QR_OVERRIDE_FIELD: "AD2",
+        },
+    ]
+    assert server._qr_payload(result.rows[0]) == "AD1"
+    assert server.validate_rows(result.rows) == []
+
+
+def test_pdf_without_supported_device_rows_is_rejected():
+    buffer = io.BytesIO()
+    canvas = rl_canvas.Canvas(buffer)
+    canvas.drawString(30, 800, "This PDF does not contain a supported device table.")
+    canvas.save()
+    with pytest.raises(ValueError, match="No device rows were found"):
+        server.read_device_file(buffer.getvalue(), "unsupported.pdf")
 
 
 def test_blank_and_incomplete_rows_are_skipped_and_extra_columns_are_ignored():
@@ -373,3 +422,30 @@ def test_compact_exported_codes_decode_at_600_dpi(tmp_path: Path):
     assert ROWS[0]["CCID"] in decoded
     assert ROWS[0]["IMEI"] in decoded
     assert server._qr_payload(ROWS[0]) in decoded
+
+
+def test_pdf_import_qr_decodes_to_sr_number_only(tmp_path: Path):
+    pdftoppm = _find_pdftoppm()
+    if not pdftoppm:
+        pytest.skip("pdftoppm is not installed")
+    zxingcpp = pytest.importorskip("zxingcpp")
+    row = {
+        "Device ID": "AD1",
+        "Model": server.PDF_MODEL,
+        "CCID": "89918640507061911506",
+        "IMEI": "866224083735190",
+        server.QR_OVERRIDE_FIELD: "AD1",
+    }
+    pdf_path = tmp_path / "pdf-import-sticker.pdf"
+    image_prefix = tmp_path / "pdf-import-sticker"
+    pdf_path.write_bytes(server.render_to_pdf([row], printer_dpi=600).getvalue())
+    subprocess.run(
+        [pdftoppm, "-png", "-r", "600", "-f", "1", "-singlefile", str(pdf_path), str(image_prefix)],
+        check=True,
+        capture_output=True,
+    )
+    decoded = {result.text for result in zxingcpp.read_barcodes(Image.open(image_prefix.with_suffix(".png")))}
+    assert row["CCID"] in decoded
+    assert row["IMEI"] in decoded
+    assert "AD1" in decoded
+    assert f"S/N: {row['Device ID']}" not in decoded

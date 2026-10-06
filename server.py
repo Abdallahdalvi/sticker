@@ -27,6 +27,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import load_workbook
+from pypdf import PdfReader
 from pydantic import BaseModel, Field
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.code128 import Code128Auto
@@ -86,6 +87,12 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 20_000
 REQUIRED_COLUMNS = ("Device ID", "IMEI", "CCID")
 IMPORTED_COLUMNS = ("Device ID", "Model", "CCID", "IMEI")
+PDF_MODEL = "KRIG42ACAAI26"
+QR_OVERRIDE_FIELD = "_QR Payload"
+PDF_ROW_PATTERN = re.compile(
+    r"(?P<imei>\d{15})\s+(?P<ccid>\d{18,22})\s+"
+    r"(?P<serial>[A-Za-z0-9][A-Za-z0-9._/-]{0,31})(?=\s|$)"
+)
 
 
 @dataclass(frozen=True)
@@ -497,6 +504,33 @@ def _read_xlsx(data: bytes) -> DeviceFileResult:
     return DeviceFileResult(rows, blank_rows, incomplete_rows, ignored_columns)
 
 
+def _read_pdf(data: bytes) -> DeviceFileResult:
+    try:
+        reader = PdfReader(io.BytesIO(data))
+    except Exception as exc:
+        raise ValueError(f"Could not open PDF file: {exc}") from exc
+    if reader.is_encrypted:
+        raise ValueError("Encrypted PDF files are not accepted.")
+
+    extracted = "\n".join(page.extract_text() or "" for page in reader.pages)
+    rows = [
+        {
+            "Device ID": match.group("serial"),
+            "Model": PDF_MODEL,
+            "CCID": match.group("ccid"),
+            "IMEI": match.group("imei"),
+            QR_OVERRIDE_FIELD: match.group("serial"),
+        }
+        for match in PDF_ROW_PATTERN.finditer(extracted)
+    ]
+    if not rows:
+        raise ValueError(
+            "No device rows were found in the PDF. Expected text columns containing "
+            "IMEI NUMBER, CCID and SR. NO."
+        )
+    return DeviceFileResult(rows, 0, 0, ())
+
+
 def _read_device_file_result(data: bytes, filename: str) -> DeviceFileResult:
     if len(data) > MAX_UPLOAD_BYTES:
         raise ValueError("File is larger than the 10 MB upload limit.")
@@ -505,13 +539,15 @@ def _read_device_file_result(data: bytes, filename: str) -> DeviceFileResult:
         result = _read_csv(data)
     elif suffix == ".xlsx":
         result = _read_xlsx(data)
+    elif suffix == ".pdf":
+        result = _read_pdf(data)
     elif suffix == ".xls":
         raise ValueError("Legacy .xls files are not accepted. Save the workbook as .xlsx or CSV.")
     else:
-        raise ValueError("Upload an .xlsx or .csv file.")
+        raise ValueError("Upload an .xlsx, .csv or supported .pdf file.")
     total_data_rows = len(result.rows) + result.blank_rows + result.incomplete_rows
     if total_data_rows > MAX_ROWS:
-        raise ValueError(f"Workbook contains more than {MAX_ROWS:,} data rows.")
+        raise ValueError(f"File contains more than {MAX_ROWS:,} data rows.")
     return result
 
 
@@ -588,6 +624,9 @@ def _qr_matrix(value: str) -> list[list[bool]]:
 
 
 def _qr_payload(row: dict[str, str]) -> str:
+    override = str(row.get(QR_OVERRIDE_FIELD, "")).strip()
+    if override:
+        return override
     return f"S/N: {row['Device ID']}\nCCID: {row['CCID']}\nIMEI: {row['IMEI']}"
 
 
@@ -1123,6 +1162,7 @@ async def upload_file(file: UploadFile = File(...)):
             "ignoredColumns": list(result.ignored_columns),
         },
         "label": {"widthMm": LABEL_WIDTH_MM, "heightMm": LABEL_HEIGHT_MM},
+        "qrMode": "serial" if any(row.get(QR_OVERRIDE_FIELD) for row in result.rows) else "full",
         "stickerModes": [
             {
                 "value": key,
