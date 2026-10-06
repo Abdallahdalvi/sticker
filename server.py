@@ -197,26 +197,20 @@ LAYOUT = {
 COMPACT_LAYOUT = {
     "info_x": 1.81,
     "info_right": 23.08,
-    "dc_top": 2.50,
-    "model_top": 5.50,
-    "device_top": 7.85,
+    "dc_top": 2.10,
     "barcode_x": 2.10,
     "barcode_w": 19.85,
     "barcode_h": 3.80,
     "barcode_text_x": 2.10,
-    "ccid_barcode_top": 8.75,
-    "ccid_text_top": 13.95,
-    "imei_barcode_top": 14.85,
-    "imei_text_top": 20.05,
     "qr_x": QR_X_MM,
-    "qr_top": 22.80,
     "qr_size": QR_SIZE_MM,
-    "bottom_art_bottom": 31.30,
     "make_in_india_x": MAKE_IN_INDIA_X_MM,
-    "make_in_india_top": 31.30 - MAKE_IN_INDIA_HEIGHT_MM,
     "make_in_india_w": MAKE_IN_INDIA_WIDTH_MM,
     "make_in_india_h": MAKE_IN_INDIA_HEIGHT_MM,
 }
+COMPACT_VISUAL_GAP_MM = 0.90
+COMPACT_BODY_FONT_PT = 4.78
+COMPACT_CODE_FONT_PT = 4.14
 
 STICKER_MODES = {
     "standard": {
@@ -307,6 +301,33 @@ def _get_sticker_font(font_key: str) -> StickerFont:
         available = ", ".join(option.label for option in FONT_OPTIONS.values())
         raise ValueError(f"Print font {font_key!r} is unavailable. Available fonts: {available}.")
     return font
+
+
+def _compact_layout_for_font(font: StickerFont) -> dict[str, float]:
+    """Return compact-mode positions with the same visible gap between every item."""
+    layout = dict(COMPACT_LAYOUT)
+    body_ascent, body_descent = pdfmetrics.getAscentDescent(font.pdf_name, COMPACT_BODY_FONT_PT)
+    code_ascent, code_descent = pdfmetrics.getAscentDescent(font.pdf_name, COMPACT_CODE_FONT_PT)
+    body_ascent_mm = body_ascent / mm
+    body_descent_mm = abs(body_descent / mm)
+    code_ascent_mm = code_ascent / mm
+    code_descent_mm = abs(code_descent / mm)
+    gap = COMPACT_VISUAL_GAP_MM
+
+    layout["model_top"] = layout["dc_top"] + body_descent_mm + gap + body_ascent_mm
+    layout["device_top"] = layout["model_top"] + body_descent_mm + gap + body_ascent_mm
+    layout["ccid_barcode_top"] = layout["device_top"] + body_descent_mm + gap
+    layout["ccid_text_top"] = (
+        layout["ccid_barcode_top"] + layout["barcode_h"] + gap + code_ascent_mm
+    )
+    layout["imei_barcode_top"] = layout["ccid_text_top"] + code_descent_mm + gap
+    layout["imei_text_top"] = (
+        layout["imei_barcode_top"] + layout["barcode_h"] + gap + code_ascent_mm
+    )
+    layout["qr_top"] = layout["imei_text_top"] + code_descent_mm + gap
+    layout["bottom_art_bottom"] = layout["qr_top"] + layout["qr_size"]
+    layout["make_in_india_top"] = layout["bottom_art_bottom"] - layout["make_in_india_h"]
+    return layout
 
 
 @lru_cache(maxsize=8)
@@ -743,18 +764,18 @@ def _draw_compact_sticker(
     printer_dpi: int,
     font: StickerFont,
 ) -> None:
-    layout = COMPACT_LAYOUT
+    layout = _compact_layout_for_font(font)
     canvas.setFillColorRGB(0, 0, 0)
     canvas.rect(0, 0, LABEL_WIDTH_MM * mm, COMPACT_LABEL_HEIGHT_MM * mm, fill=1, stroke=0)
 
     info_x = layout["info_x"] * mm
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.setFont(font.pdf_name, 4.78)
+    canvas.setFont(font.pdf_name, COMPACT_BODY_FONT_PT)
     canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["dc_top"]) * mm, "DC-Input: 5V - 12V")
 
     model = row.get("Model", "") or "4G Dongle"
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.setFont(font.pdf_name, 4.78)
+    canvas.setFont(font.pdf_name, COMPACT_BODY_FONT_PT)
     canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["model_top"]) * mm, f"Model: {model}")
     canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["device_top"]) * mm, f"S/N: {row['Device ID']}")
 
@@ -772,7 +793,7 @@ def _draw_compact_sticker(
         barcode_text_x,
         (COMPACT_LABEL_HEIGHT_MM - layout["ccid_text_top"]) * mm,
         barcode_text_width,
-        4.14,
+        COMPACT_CODE_FONT_PT,
         font_name=font.pdf_name,
     )
     _draw_fitted_text(
@@ -781,7 +802,7 @@ def _draw_compact_sticker(
         barcode_text_x,
         (COMPACT_LABEL_HEIGHT_MM - layout["imei_text_top"]) * mm,
         barcode_text_width,
-        4.14,
+        COMPACT_CODE_FONT_PT,
         font_name=font.pdf_name,
     )
 
@@ -976,17 +997,17 @@ def _svg_qr(row: dict[str, str], layout: dict[str, float]) -> str:
 
 
 def _render_compact_svg(row: dict[str, str], printer_dpi: int, font: StickerFont) -> str:
-    layout = COMPACT_LAYOUT
+    layout = _compact_layout_for_font(font)
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
     model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
     device_line = html.escape(f"S/N: {row['Device ID']}")
     barcode_text_width_pt = (LABEL_WIDTH_MM - layout["barcode_text_x"] - 1.0) * mm
     ccid_font_size_mm = _fitted_font_size(
-        f"CCID {row['CCID']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+        f"CCID {row['CCID']}", barcode_text_width_pt, COMPACT_CODE_FONT_PT, font_name=font.pdf_name
     ) / mm
     imei_font_size_mm = _fitted_font_size(
-        f"IMEI {row['IMEI']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+        f"IMEI {row['IMEI']}", barcode_text_width_pt, COMPACT_CODE_FONT_PT, font_name=font.pdf_name
     ) / mm
     make_in_india = (
         f'<svg x="{layout["make_in_india_x"]:.4f}" y="{layout["make_in_india_top"]:.4f}" '
@@ -1000,9 +1021,9 @@ def _render_compact_svg(row: dict[str, str], printer_dpi: int, font: StickerFont
         f'{_svg_font_style(font)}'
         '<rect width="100%" height="100%" fill="#000"/>'
         '<g class="dynamic-text" fill="#fff">'
-        f'<text x="{layout["info_x"]}" y="{layout["dc_top"]}" font-size="{4.78 / mm:.4f}">DC-Input: 5V - 12V</text>'
-        f'<text x="{layout["info_x"]}" y="{layout["model_top"]}" font-size="{4.78 / mm:.4f}">{model_line}</text>'
-        f'<text x="{layout["info_x"]}" y="{layout["device_top"]}" font-size="{4.78 / mm:.4f}">{device_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["dc_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">DC-Input: 5V - 12V</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["model_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">{model_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["device_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">{device_line}</text>'
         f'<text x="{layout["barcode_text_x"]}" y="{layout["ccid_text_top"]}" font-size="{ccid_font_size_mm:.4f}">CCID {ccid}</text>'
         f'<text x="{layout["barcode_text_x"]}" y="{layout["imei_text_top"]}" font-size="{imei_font_size_mm:.4f}">IMEI {imei}</text>'
         '</g>'
