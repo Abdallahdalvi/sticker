@@ -259,6 +259,10 @@ def test_compact_mode_has_34_mm_page_and_only_requested_fixed_artwork():
     assert visual_gaps == pytest.approx(
         [server.COMPACT_VISUAL_GAP_MM] * len(visual_gaps), abs=0.001
     )
+    top_margin = layout["dc_top"] - body_ascent
+    bottom_margin = server.COMPACT_LABEL_HEIGHT_MM - layout["bottom_art_bottom"]
+    assert top_margin == pytest.approx(bottom_margin, abs=0.001)
+    assert top_margin > 2.0
 
     data = server.render_to_pdf([ROWS[0]], sticker_mode="compact").getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]

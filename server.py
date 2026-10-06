@@ -327,6 +327,23 @@ def _compact_layout_for_font(font: StickerFont) -> dict[str, float]:
     layout["qr_top"] = layout["imei_text_top"] + code_descent_mm + gap
     layout["bottom_art_bottom"] = layout["qr_top"] + layout["qr_size"]
     layout["make_in_india_top"] = layout["bottom_art_bottom"] - layout["make_in_india_h"]
+
+    top_margin = layout["dc_top"] - body_ascent_mm
+    bottom_margin = COMPACT_LABEL_HEIGHT_MM - layout["bottom_art_bottom"]
+    vertical_shift = (bottom_margin - top_margin) / 2
+    for key in (
+        "dc_top",
+        "model_top",
+        "device_top",
+        "ccid_barcode_top",
+        "ccid_text_top",
+        "imei_barcode_top",
+        "imei_text_top",
+        "qr_top",
+        "bottom_art_bottom",
+        "make_in_india_top",
+    ):
+        layout[key] += vertical_shift
     return layout
 
 
