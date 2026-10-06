@@ -50,10 +50,13 @@ JIO_FONT_ASSET = STATIC_DIR / "fonts" / "JioType-Bold.ttf"
 
 LABEL_WIDTH_MM = 24.08
 LABEL_HEIGHT_MM = 74.08
+COMPACT_LABEL_HEIGHT_MM = 34.0
 CONTENT_UP_MM = 1.88
 A4_COLUMNS = 7
 A4_ROWS = 3
 A4_LABELS_PER_PAGE = A4_COLUMNS * A4_ROWS
+COMPACT_A4_ROWS = 7
+COMPACT_A4_LABELS_PER_PAGE = A4_COLUMNS * COMPACT_A4_ROWS
 A4_GUTTER_MM = 4.0
 UPPER_SEPARATOR_Y_MM = 20.85
 TECH_SECTION_WIDTH_MM = 22.67
@@ -187,6 +190,48 @@ LAYOUT = {
     "qr_x": QR_X_MM,
     "qr_top": QR_TOP_MM,
     "qr_size": QR_SIZE_MM,
+}
+
+# The compact label keeps all record-specific codes and identifiers while replacing
+# the tall branding/technical section with one concise electrical-rating line.
+COMPACT_LAYOUT = {
+    "info_x": 1.81,
+    "info_right": 23.08,
+    "dc_top": 2.65,
+    "separator_top": 4.10,
+    "model_top": 6.10,
+    "device_top": 8.20,
+    "barcode_x": 2.10,
+    "barcode_w": 19.85,
+    "barcode_h": 3.50,
+    "barcode_text_x": 2.10,
+    "ccid_barcode_top": 8.95,
+    "ccid_text_top": 13.85,
+    "imei_barcode_top": 14.55,
+    "imei_text_top": 19.45,
+    "qr_x": QR_X_MM,
+    "qr_top": 24.30,
+    "qr_size": QR_SIZE_MM,
+    "bottom_art_bottom": 32.80,
+    "make_in_india_x": MAKE_IN_INDIA_X_MM,
+    "make_in_india_top": 32.80 - MAKE_IN_INDIA_HEIGHT_MM,
+    "make_in_india_w": MAKE_IN_INDIA_WIDTH_MM,
+    "make_in_india_h": MAKE_IN_INDIA_HEIGHT_MM,
+}
+
+STICKER_MODES = {
+    "standard": {
+        "label_height_mm": LABEL_HEIGHT_MM,
+        "a4_rows": A4_ROWS,
+        "labels_per_page": A4_LABELS_PER_PAGE,
+        "label": "Full design",
+    },
+    "compact": {
+        "label_height_mm": COMPACT_LABEL_HEIGHT_MM,
+        "a4_rows": COMPACT_A4_ROWS,
+        "labels_per_page": COMPACT_A4_LABELS_PER_PAGE,
+        "label": "Compact 34 mm",
+    },
 }
 
 
@@ -538,11 +583,18 @@ def _fitted_font_size(
     return fitted
 
 
-def _draw_barcode(canvas: rl_canvas.Canvas, value: str, top_mm: float, printer_dpi: int) -> None:
-    x_pt = LAYOUT["barcode_x"] * mm
-    width_pt = LAYOUT["barcode_w"] * mm
-    height_pt = LAYOUT["barcode_h"] * mm
-    y_pt = (LABEL_HEIGHT_MM - top_mm - LAYOUT["barcode_h"]) * mm
+def _draw_barcode(
+    canvas: rl_canvas.Canvas,
+    value: str,
+    top_mm: float,
+    printer_dpi: int,
+    layout: dict[str, float] = LAYOUT,
+    label_height_mm: float = LABEL_HEIGHT_MM,
+) -> None:
+    x_pt = layout["barcode_x"] * mm
+    width_pt = layout["barcode_w"] * mm
+    height_pt = layout["barcode_h"] * mm
+    y_pt = (label_height_mm - top_mm - layout["barcode_h"]) * mm
     barcode, _, quiet_pt = _barcode_spec(value, width_pt, printer_dpi)
     barcode.barHeight = height_pt
     canvas.setFillColorRGB(1, 1, 1)
@@ -577,6 +629,7 @@ def _draw_svg_in_box(
     width_mm: float,
     height_mm: float,
     preserve_aspect: bool = True,
+    label_height_mm: float = LABEL_HEIGHT_MM,
 ) -> None:
     """Place one supplied SVG in a fixed physical box, optionally preserving its aspect ratio."""
     scale_x = (width_mm * mm) / drawing.width
@@ -586,7 +639,7 @@ def _draw_svg_in_box(
     rendered_width = drawing.width * scale_x
     rendered_height = drawing.height * scale_y
     left = x_mm * mm + (width_mm * mm - rendered_width) / 2
-    bottom = (LABEL_HEIGHT_MM - top_mm - height_mm) * mm + (height_mm * mm - rendered_height) / 2
+    bottom = (label_height_mm - top_mm - height_mm) * mm + (height_mm * mm - rendered_height) / 2
     canvas.saveState()
     canvas.translate(left, bottom)
     canvas.scale(scale_x, scale_y)
@@ -685,26 +738,118 @@ def _draw_sticker(
     canvas.restoreState()
 
 
+def _draw_compact_sticker(
+    canvas: rl_canvas.Canvas,
+    row: dict[str, str],
+    printer_dpi: int,
+    font: StickerFont,
+) -> None:
+    layout = COMPACT_LAYOUT
+    canvas.setFillColorRGB(0, 0, 0)
+    canvas.rect(0, 0, LABEL_WIDTH_MM * mm, COMPACT_LABEL_HEIGHT_MM * mm, fill=1, stroke=0)
+
+    info_x = layout["info_x"] * mm
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.setFont(font.pdf_name, 4.78)
+    canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["dc_top"]) * mm, "DC-Input: 5V - 12V")
+    canvas.setStrokeColorRGB(0.61, 0.62, 0.59)
+    canvas.setLineWidth(SEPARATOR_WIDTH_MM * mm)
+    canvas.setLineCap(1)
+    line_y = (COMPACT_LABEL_HEIGHT_MM - layout["separator_top"]) * mm
+    canvas.line(SEPARATOR_X_START_MM * mm, line_y, SEPARATOR_X_END_MM * mm, line_y)
+
+    model = row.get("Model", "") or "4G Dongle"
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.setFont(font.pdf_name, 4.78)
+    canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["model_top"]) * mm, f"Model: {model}")
+    canvas.drawString(info_x, (COMPACT_LABEL_HEIGHT_MM - layout["device_top"]) * mm, f"S/N: {row['Device ID']}")
+
+    _draw_barcode(
+        canvas, row["CCID"], layout["ccid_barcode_top"], printer_dpi, layout, COMPACT_LABEL_HEIGHT_MM
+    )
+    _draw_barcode(
+        canvas, row["IMEI"], layout["imei_barcode_top"], printer_dpi, layout, COMPACT_LABEL_HEIGHT_MM
+    )
+    barcode_text_x = layout["barcode_text_x"] * mm
+    barcode_text_width = (LABEL_WIDTH_MM - layout["barcode_text_x"] - 1.0) * mm
+    _draw_fitted_text(
+        canvas,
+        f"CCID {row['CCID']}",
+        barcode_text_x,
+        (COMPACT_LABEL_HEIGHT_MM - layout["ccid_text_top"]) * mm,
+        barcode_text_width,
+        4.14,
+        font_name=font.pdf_name,
+    )
+    _draw_fitted_text(
+        canvas,
+        f"IMEI {row['IMEI']}",
+        barcode_text_x,
+        (COMPACT_LABEL_HEIGHT_MM - layout["imei_text_top"]) * mm,
+        barcode_text_width,
+        4.14,
+        font_name=font.pdf_name,
+    )
+
+    _draw_svg_in_box(
+        canvas,
+        MAKE_IN_INDIA_DRAWING,
+        layout["make_in_india_x"],
+        layout["make_in_india_top"],
+        layout["make_in_india_w"],
+        layout["make_in_india_h"],
+        label_height_mm=COMPACT_LABEL_HEIGHT_MM,
+    )
+    matrix = _qr_matrix(_qr_payload(row))
+    qr_x = layout["qr_x"] * mm
+    qr_size = layout["qr_size"] * mm
+    qr_y = (COMPACT_LABEL_HEIGHT_MM - layout["qr_top"] - layout["qr_size"]) * mm
+    cell = qr_size / len(matrix)
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
+    canvas.setFillColorRGB(0, 0, 0)
+    for row_idx, cells in enumerate(matrix):
+        for col_idx, dark in enumerate(cells):
+            if dark:
+                canvas.rect(
+                    qr_x + col_idx * cell,
+                    qr_y + (len(matrix) - row_idx - 1) * cell,
+                    cell,
+                    cell,
+                    fill=1,
+                    stroke=0,
+                )
+
+
 def render_to_pdf(
     rows: list[dict[str, str]],
     printer_dpi: int = 600,
     page_format: str = "label",
     font_key: str = "arial",
+    sticker_mode: str = "standard",
 ) -> io.BytesIO:
     if printer_dpi not in (300, 600):
         raise ValueError("Printer DPI must be 300 or 600.")
     if page_format not in ("label", "a4"):
         raise ValueError("Page format must be 'label' or 'a4'.")
+    if sticker_mode not in STICKER_MODES:
+        raise ValueError("Sticker mode must be 'standard' or 'compact'.")
     font = _get_sticker_font(font_key)
+    mode = STICKER_MODES[sticker_mode]
+    layout = COMPACT_LAYOUT if sticker_mode == "compact" else LAYOUT
+    label_height_mm = float(mode["label_height_mm"])
+    a4_rows = int(mode["a4_rows"])
+    labels_per_page = int(mode["labels_per_page"])
+    draw_sticker = _draw_compact_sticker if sticker_mode == "compact" else _draw_sticker
     errors = validate_rows(rows)
     if errors:
         raise ValueError("Input rows failed validation.")
     for row in rows:
-        _barcode_spec(row["CCID"], LAYOUT["barcode_w"] * mm, printer_dpi)
-        _barcode_spec(row["IMEI"], LAYOUT["barcode_w"] * mm, printer_dpi)
+        _barcode_spec(row["CCID"], layout["barcode_w"] * mm, printer_dpi)
+        _barcode_spec(row["IMEI"], layout["barcode_w"] * mm, printer_dpi)
 
     buffer = io.BytesIO()
-    pagesize = (LABEL_WIDTH_MM * mm, LABEL_HEIGHT_MM * mm) if page_format == "label" else A4
+    pagesize = (LABEL_WIDTH_MM * mm, label_height_mm * mm) if page_format == "label" else A4
     canvas = rl_canvas.Canvas(buffer, pagesize=pagesize, pageCompression=1)
     canvas.setTitle("Bulk device stickers" if page_format == "label" else "A4 bulk device sticker sheets")
 
@@ -712,25 +857,25 @@ def render_to_pdf(
         for index, row in enumerate(rows):
             if index:
                 canvas.showPage()
-            _draw_sticker(canvas, row, printer_dpi, font)
+            draw_sticker(canvas, row, printer_dpi, font)
     else:
         a4_width_mm = A4[0] / mm
         a4_height_mm = A4[1] / mm
         grid_width_mm = A4_COLUMNS * LABEL_WIDTH_MM + (A4_COLUMNS - 1) * A4_GUTTER_MM
-        grid_height_mm = A4_ROWS * LABEL_HEIGHT_MM + (A4_ROWS - 1) * A4_GUTTER_MM
+        grid_height_mm = a4_rows * label_height_mm + (a4_rows - 1) * A4_GUTTER_MM
         left_mm = (a4_width_mm - grid_width_mm) / 2
         top_mm = (a4_height_mm - grid_height_mm) / 2
         for index, row in enumerate(rows):
-            slot = index % A4_LABELS_PER_PAGE
+            slot = index % labels_per_page
             if index and slot == 0:
                 canvas.showPage()
             column = slot % A4_COLUMNS
             grid_row = slot // A4_COLUMNS
             x_mm = left_mm + column * (LABEL_WIDTH_MM + A4_GUTTER_MM)
-            y_mm = a4_height_mm - top_mm - LABEL_HEIGHT_MM - grid_row * (LABEL_HEIGHT_MM + A4_GUTTER_MM)
+            y_mm = a4_height_mm - top_mm - label_height_mm - grid_row * (label_height_mm + A4_GUTTER_MM)
             canvas.saveState()
             canvas.translate(x_mm * mm, y_mm * mm)
-            _draw_sticker(canvas, row, printer_dpi, font)
+            draw_sticker(canvas, row, printer_dpi, font)
             canvas.restoreState()
     canvas.save()
     buffer.seek(0)
@@ -787,17 +932,22 @@ def _svg_vector_art() -> str:
     )
 
 
-def _svg_barcode(value: str, top_mm: float, printer_dpi: int) -> str:
+def _svg_barcode(
+    value: str,
+    top_mm: float,
+    printer_dpi: int,
+    layout: dict[str, float] = LAYOUT,
+) -> str:
     pattern, modules = _barcode_pattern(value)
     total = modules + 20
-    module_w = LAYOUT["barcode_w"] / total
+    module_w = layout["barcode_w"] / total
     minimum_mm = (2 * 25.4) / printer_dpi
     if module_w + 1e-9 < minimum_mm:
         raise ValueError(f"Barcode {value!r} is too dense for {printer_dpi} DPI.")
-    x = LAYOUT["barcode_x"] + 10 * module_w
+    x = layout["barcode_x"] + 10 * module_w
     pieces = [
-        f'<rect x="{LAYOUT["barcode_x"]:.4f}" y="{top_mm:.4f}" width="{LAYOUT["barcode_w"]:.4f}" '
-        f'height="{LAYOUT["barcode_h"]:.4f}" fill="#fff"/>'
+        f'<rect x="{layout["barcode_x"]:.4f}" y="{top_mm:.4f}" width="{layout["barcode_w"]:.4f}" '
+        f'height="{layout["barcode_h"]:.4f}" fill="#fff"/>'
     ]
     is_bar = True
     for char in pattern:
@@ -806,22 +956,90 @@ def _svg_barcode(value: str, top_mm: float, printer_dpi: int) -> str:
         if is_bar:
             pieces.append(
                 f'<rect x="{x:.4f}" y="{top_mm:.4f}" width="{width:.4f}" '
-                f'height="{LAYOUT["barcode_h"]:.4f}" fill="#000"/>'
+                f'height="{layout["barcode_h"]:.4f}" fill="#000"/>'
             )
         x += width
         is_bar = not is_bar
     return "".join(pieces)
 
 
-def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "arial") -> str:
+def _svg_qr(row: dict[str, str], layout: dict[str, float]) -> str:
+    matrix = _qr_matrix(_qr_payload(row))
+    cell = layout["qr_size"] / len(matrix)
+    parts = [
+        f'<rect x="{layout["qr_x"]}" y="{layout["qr_top"]}" width="{layout["qr_size"]}" '
+        f'height="{layout["qr_size"]}" fill="#fff"/>'
+    ]
+    for row_idx, cells in enumerate(matrix):
+        for col_idx, dark in enumerate(cells):
+            if dark:
+                parts.append(
+                    f'<rect x="{layout["qr_x"] + col_idx * cell:.4f}" '
+                    f'y="{layout["qr_top"] + row_idx * cell:.4f}" '
+                    f'width="{cell:.4f}" height="{cell:.4f}" fill="#000"/>'
+                )
+    return "".join(parts)
+
+
+def _render_compact_svg(row: dict[str, str], printer_dpi: int, font: StickerFont) -> str:
+    layout = COMPACT_LAYOUT
+    ccid = html.escape(row["CCID"])
+    imei = html.escape(row["IMEI"])
+    model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
+    device_line = html.escape(f"S/N: {row['Device ID']}")
+    barcode_text_width_pt = (LABEL_WIDTH_MM - layout["barcode_text_x"] - 1.0) * mm
+    ccid_font_size_mm = _fitted_font_size(
+        f"CCID {row['CCID']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+    ) / mm
+    imei_font_size_mm = _fitted_font_size(
+        f"IMEI {row['IMEI']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
+    ) / mm
+    make_in_india = (
+        f'<svg x="{layout["make_in_india_x"]:.4f}" y="{layout["make_in_india_top"]:.4f}" '
+        f'width="{layout["make_in_india_w"]:.4f}" height="{layout["make_in_india_h"]:.4f}" '
+        'viewBox="0 0 1983 903" preserveAspectRatio="xMidYMid meet">'
+        f'{MAKE_IN_INDIA_SVG_INNER}</svg>'
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{LABEL_WIDTH_MM}mm" '
+        f'height="{COMPACT_LABEL_HEIGHT_MM}mm" viewBox="0 0 {LABEL_WIDTH_MM} {COMPACT_LABEL_HEIGHT_MM}">'
+        f'{_svg_font_style(font)}'
+        '<rect width="100%" height="100%" fill="#000"/>'
+        '<g class="dynamic-text" fill="#fff">'
+        f'<text x="{layout["info_x"]}" y="{layout["dc_top"]}" font-size="{4.78 / mm:.4f}">DC-Input: 5V - 12V</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["model_top"]}" font-size="{4.78 / mm:.4f}">{model_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["device_top"]}" font-size="{4.78 / mm:.4f}">{device_line}</text>'
+        f'<text x="{layout["barcode_text_x"]}" y="{layout["ccid_text_top"]}" font-size="{ccid_font_size_mm:.4f}">CCID {ccid}</text>'
+        f'<text x="{layout["barcode_text_x"]}" y="{layout["imei_text_top"]}" font-size="{imei_font_size_mm:.4f}">IMEI {imei}</text>'
+        '</g>'
+        f'<line x1="{SEPARATOR_X_START_MM}" y1="{layout["separator_top"]}" '
+        f'x2="{SEPARATOR_X_END_MM}" y2="{layout["separator_top"]}" stroke="#9b9d96" '
+        f'stroke-width="{SEPARATOR_WIDTH_MM}" stroke-linecap="round"/>'
+        f'{_svg_barcode(row["CCID"], layout["ccid_barcode_top"], printer_dpi, layout)}'
+        f'{_svg_barcode(row["IMEI"], layout["imei_barcode_top"], printer_dpi, layout)}'
+        f'{make_in_india}'
+        f'{_svg_qr(row, layout)}'
+        '</svg>'
+    )
+
+
+def render_to_svg(
+    row: dict[str, str],
+    printer_dpi: int = 600,
+    font_key: str = "arial",
+    sticker_mode: str = "standard",
+) -> str:
     errors = validate_rows([row])
     if errors:
         raise ValueError(errors[0]["message"])
     font = _get_sticker_font(font_key)
+    if sticker_mode not in STICKER_MODES:
+        raise ValueError("Sticker mode must be 'standard' or 'compact'.")
+    if sticker_mode == "compact":
+        return _render_compact_svg(row, printer_dpi, font)
     vector_art = _svg_vector_art()
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
-    qr_matrix = _qr_matrix(_qr_payload(row))
     model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
     device_line = html.escape(f"S/N: {row['Device ID']}")
     barcode_text_width_pt = (LABEL_WIDTH_MM - LAYOUT["barcode_text_x"] - 1.0) * mm
@@ -831,19 +1049,6 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "
     imei_font_size_mm = _fitted_font_size(
         f"IMEI {row['IMEI']}", barcode_text_width_pt, 4.14, font_name=font.pdf_name
     ) / mm
-    qr_cell = LAYOUT["qr_size"] / len(qr_matrix)
-    qr_parts = [
-        f'<rect x="{LAYOUT["qr_x"]}" y="{LAYOUT["qr_top"]}" width="{LAYOUT["qr_size"]}" '
-        f'height="{LAYOUT["qr_size"]}" fill="#fff"/>'
-    ]
-    for row_idx, cells in enumerate(qr_matrix):
-        for col_idx, dark in enumerate(cells):
-            if dark:
-                qr_parts.append(
-                    f'<rect x="{LAYOUT["qr_x"] + col_idx * qr_cell:.4f}" '
-                    f'y="{LAYOUT["qr_top"] + row_idx * qr_cell:.4f}" '
-                    f'width="{qr_cell:.4f}" height="{qr_cell:.4f}" fill="#000"/>'
-                )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{LABEL_WIDTH_MM}mm" height="{LABEL_HEIGHT_MM}mm" '
         f'viewBox="0 0 {LABEL_WIDTH_MM} {LABEL_HEIGHT_MM}">'
@@ -859,7 +1064,7 @@ def render_to_svg(row: dict[str, str], printer_dpi: int = 600, font_key: str = "
         '</g>'
         f'{_svg_barcode(row["CCID"], LAYOUT["ccid_barcode_top"], printer_dpi)}'
         f'{_svg_barcode(row["IMEI"], LAYOUT["imei_barcode_top"], printer_dpi)}'
-        f'{"".join(qr_parts)}'
+        f'{_svg_qr(row, LAYOUT)}'
         '</g>'
         '</svg>'
     )
@@ -889,6 +1094,15 @@ async def upload_file(file: UploadFile = File(...)):
             "ignoredColumns": list(result.ignored_columns),
         },
         "label": {"widthMm": LABEL_WIDTH_MM, "heightMm": LABEL_HEIGHT_MM},
+        "stickerModes": [
+            {
+                "value": key,
+                "label": mode["label"],
+                "widthMm": LABEL_WIDTH_MM,
+                "heightMm": mode["label_height_mm"],
+            }
+            for key, mode in STICKER_MODES.items()
+        ],
         "fonts": [{"value": key, "label": font.label} for key, font in FONT_OPTIONS.items()],
     })
 
@@ -897,13 +1111,14 @@ class PreviewRequest(BaseModel):
     row: dict[str, Any]
     printer_dpi: int = Field(default=600, alias="printerDpi")
     font_family: str = Field(default="arial", alias="fontFamily")
+    sticker_mode: str = Field(default="standard", alias="stickerMode")
 
 
 @app.post("/api/preview")
 async def preview_svg(request: PreviewRequest):
     row = {key: "" if value is None else str(value).strip() for key, value in request.row.items()}
     try:
-        svg = render_to_svg(row, request.printer_dpi, request.font_family)
+        svg = render_to_svg(row, request.printer_dpi, request.font_family, request.sticker_mode)
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "Preview", "message": str(exc)}])
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
@@ -917,6 +1132,7 @@ class GenerateRequest(BaseModel):
     printer_dpi: int = Field(default=600, alias="printerDpi")
     page_format: str = Field(default="label", alias="pageFormat")
     font_family: str = Field(default="arial", alias="fontFamily")
+    sticker_mode: str = Field(default="standard", alias="stickerMode")
 
 
 @app.post("/api/generate")
@@ -930,12 +1146,24 @@ async def generate_pdf(request: GenerateRequest):
         _raise_validation([{"row": 0, "field": "Range", "message": f"Choose a range between 1 and {len(rows)}."}])
     selected = rows[request.start - 1:end]
     try:
-        pdf = render_to_pdf(selected, request.printer_dpi, request.page_format, request.font_family)
+        pdf = render_to_pdf(
+            selected,
+            request.printer_dpi,
+            request.page_format,
+            request.font_family,
+            request.sticker_mode,
+        )
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "Printer", "message": str(exc)}])
-    suffix = "_a4" if request.page_format == "a4" else ""
+    mode_suffix = "_compact" if request.sticker_mode == "compact" else ""
+    suffix = f"{mode_suffix}_a4" if request.page_format == "a4" else mode_suffix
     filename = f"stickers_{request.start}-{end}{suffix}.pdf"
-    page_count = len(selected) if request.page_format == "label" else (len(selected) + A4_LABELS_PER_PAGE - 1) // A4_LABELS_PER_PAGE
+    labels_per_page = int(
+        STICKER_MODES.get(request.sticker_mode, STICKER_MODES["standard"])["labels_per_page"]
+    )
+    page_count = len(selected) if request.page_format == "label" else (
+        len(selected) + labels_per_page - 1
+    ) // labels_per_page
     return StreamingResponse(
         pdf,
         media_type="application/pdf",
@@ -949,7 +1177,11 @@ async def generate_pdf(request: GenerateRequest):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "labelMm": [LABEL_WIDTH_MM, LABEL_HEIGHT_MM]}
+    return {
+        "ok": True,
+        "labelMm": [LABEL_WIDTH_MM, LABEL_HEIGHT_MM],
+        "compactLabelMm": [LABEL_WIDTH_MM, COMPACT_LABEL_HEIGHT_MM],
+    }
 
 
 @app.get("/api/reference.svg")

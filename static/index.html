@@ -15,7 +15,7 @@
     </div>
     <div class="size-pill">
       <span>Label size</span>
-      <strong>24.08 × 74.08 mm</strong>
+      <strong id="label-size">24.08 × 74.08 mm</strong>
     </div>
   </header>
 
@@ -65,10 +65,17 @@
             <label>Number of stickers<input id="record-count" type="number" min="1" value="1" disabled></label>
           </div>
           <div class="field-grid option-grid">
+            <label class="select-label mode-field">Sticker design
+              <select id="sticker-mode" disabled>
+                <option value="standard" selected>Full design — 24.08 × 74.08 mm</option>
+                <option value="compact">Compact — 24.08 × 34 mm</option>
+              </select>
+              <small>Compact keeps DC input, identifiers, barcodes, QR, and Make in India.</small>
+            </label>
             <label class="select-label">Output layout
               <select id="page-format" disabled>
                 <option value="label" selected>Individual sticker pages</option>
-                <option value="a4">A4 sheet - 21 stickers (7 × 3)</option>
+                <option value="a4">A4 sheet — 21 stickers (7 × 3)</option>
               </select>
             </label>
             <label class="select-label">Printer resolution
@@ -109,6 +116,6 @@
     </section>
   </main>
 
-  <script src="editor.js?v=16"></script>
+  <script src="editor.js?v=17"></script>
 </body>
 </html>

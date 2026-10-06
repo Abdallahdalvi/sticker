@@ -2,7 +2,12 @@
 
 Local web application for producing scanner-ready Reliance 4G dongle labels from Excel or CSV data.
 
-The supported label is **24.08 mm × 74.08 mm portrait**, matching the supplied reference PDF. Each accepted spreadsheet row becomes one physical-size sticker with:
+The generator supports two labels with the same **24.08 mm** width:
+
+- **Full design — 24.08 × 74.08 mm**, matching the supplied reference PDF
+- **Compact — 24.08 × 34 mm**, with a one-line DC input rating and no Reliance logo, power/connectivity/IoT icons, or connectivity text
+
+Each accepted spreadsheet row becomes one physical-size sticker with:
 
 - dynamic S/N text (imported from either an S/N or Device ID column)
 - dynamic CCID Code 128 and readable text
@@ -81,7 +86,7 @@ Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or form
 - Print at **100% / Actual Size**.
 - Disable “Fit to page”, scaling, and browser headers/footers.
 - **Individual sticker pages** contain one sticker per physical-size page for roll/thermal printing.
-- **A4 sticker sheets** contain 21 stickers per page in a centered 7 × 3 grid with 4 mm cutting gutters.
+- **A4 sticker sheets** contain 21 full-design stickers (7 × 3) or 49 compact stickers (7 × 7) per page, centered with 4 mm cutting gutters.
 
 The app calculates the Code 128 narrow-module width before export. A 300 DPI export is rejected when the selected values cannot maintain two printer dots per narrow module.
 

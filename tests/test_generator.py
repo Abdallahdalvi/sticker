@@ -220,6 +220,25 @@ def test_pdf_has_one_physical_size_page_per_row():
     assert "K34632722" in (reader.pages[1].extract_text() or "")
 
 
+def test_compact_mode_has_34_mm_page_and_only_requested_fixed_artwork():
+    svg = server.render_to_svg(ROWS[0], sticker_mode="compact")
+    assert f'height="{server.COMPACT_LABEL_HEIGHT_MM}mm"' in svg
+    assert "DC-Input: 5V - 12V" in svg
+    assert "Model: 4G Dongle" in svg
+    assert "S/N: K34632721" in svg
+    assert 'viewBox="0 0 1983 903"' in svg
+    assert 'viewBox="0 0 1600 1203"' not in svg
+    assert 'viewBox="0 45 810 720"' not in svg
+    assert "Connectivity" not in svg
+
+    data = server.render_to_pdf([ROWS[0]], sticker_mode="compact").getvalue()
+    page = PdfReader(io.BytesIO(data)).pages[0]
+    width_mm = float(page.mediabox.width) / 72 * 25.4
+    height_mm = float(page.mediabox.height) / 72 * 25.4
+    assert width_mm == pytest.approx(server.LABEL_WIDTH_MM, abs=0.02)
+    assert height_mm == pytest.approx(server.COMPACT_LABEL_HEIGHT_MM, abs=0.02)
+
+
 def test_fixed_artwork_is_vector_not_an_embedded_image():
     data = server.render_to_pdf([ROWS[0]], printer_dpi=600).getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]
@@ -248,6 +267,25 @@ def test_a4_output_places_21_stickers_per_sheet():
     assert "K00000000" in (reader.pages[0].extract_text() or "")
     assert "K00000020" in (reader.pages[0].extract_text() or "")
     assert "K00000021" in (reader.pages[1].extract_text() or "")
+
+
+def test_compact_a4_output_places_49_stickers_per_sheet():
+    rows = [
+        {
+            "Device ID": f"K{i:08d}",
+            "IMEI": str(356789012345000 + i),
+            "CCID": str(89148000001234567000 + i),
+            "Model": "4G Dongle",
+        }
+        for i in range(50)
+    ]
+    data = server.render_to_pdf(
+        rows, printer_dpi=600, page_format="a4", sticker_mode="compact"
+    ).getvalue()
+    reader = PdfReader(io.BytesIO(data))
+    assert len(reader.pages) == 2
+    assert "K00000048" in (reader.pages[0].extract_text() or "")
+    assert "K00000049" in (reader.pages[1].extract_text() or "")
 
 
 def test_dense_ccid_is_rejected_at_300_dpi():
@@ -281,3 +319,24 @@ def test_exported_codes_decode_at_600_dpi(tmp_path: Path):
     assert ROWS[0]["IMEI"] in decoded
     assert server._qr_payload(ROWS[0]) in decoded
     assert ROWS[0]["QR Data"] not in decoded
+
+
+def test_compact_exported_codes_decode_at_600_dpi(tmp_path: Path):
+    pdftoppm = _find_pdftoppm()
+    if not pdftoppm:
+        pytest.skip("pdftoppm is not installed")
+    zxingcpp = pytest.importorskip("zxingcpp")
+    pdf_path = tmp_path / "compact-sticker.pdf"
+    image_prefix = tmp_path / "compact-sticker"
+    pdf_path.write_bytes(
+        server.render_to_pdf([ROWS[0]], printer_dpi=600, sticker_mode="compact").getvalue()
+    )
+    subprocess.run(
+        [pdftoppm, "-png", "-r", "600", "-f", "1", "-singlefile", str(pdf_path), str(image_prefix)],
+        check=True,
+        capture_output=True,
+    )
+    decoded = {result.text for result in zxingcpp.read_barcodes(Image.open(image_prefix.with_suffix(".png")))}
+    assert ROWS[0]["CCID"] in decoded
+    assert ROWS[0]["IMEI"] in decoded
+    assert server._qr_payload(ROWS[0]) in decoded

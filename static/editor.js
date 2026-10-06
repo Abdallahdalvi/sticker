@@ -11,6 +11,9 @@ const recordCount = document.getElementById('record-count');
 const printerDpi = document.getElementById('printer-dpi');
 const pageFormat = document.getElementById('page-format');
 const printFont = document.getElementById('print-font');
+const stickerMode = document.getElementById('sticker-mode');
+const labelSize = document.getElementById('label-size');
+const labelPreview = document.querySelector('.label-preview');
 const generateButton = document.getElementById('generate-pdf');
 const printWarning = document.getElementById('print-warning');
 const previewImage = document.getElementById('preview-image');
@@ -65,13 +68,27 @@ function updateRangeSummary() {
   const records = Math.min(available, Math.max(1, Number(recordCount.value) || available));
   startRecord.value = start;
   recordCount.value = records;
-  const pages = pageFormat.value === 'a4' ? Math.ceil(records / 21) : records;
+  const compact = stickerMode.value === 'compact';
+  const labelsPerSheet = compact ? 49 : 21;
+  const rowsPerSheet = compact ? 7 : 3;
+  const pages = pageFormat.value === 'a4' ? Math.ceil(records / labelsPerSheet) : records;
   summaryValues[0].textContent = records.toLocaleString();
   summaryValues[1].textContent = pages.toLocaleString();
   summaryValues[2].textContent = '3';
   printWarning.textContent = pageFormat.value === 'a4'
-    ? 'A4: 21 stickers per sheet (7 × 3) with 4 mm cutting gaps. Print at 100% / Actual Size.'
+    ? `A4: ${labelsPerSheet} stickers per sheet (7 × ${rowsPerSheet}) with 4 mm cutting gaps. Print at 100% / Actual Size.`
     : 'Print at 100% / Actual Size. Do not use “Fit to page”.';
+}
+
+function updateModeUi() {
+  const compact = stickerMode.value === 'compact';
+  const height = compact ? 34 : 74.08;
+  const count = compact ? 49 : 21;
+  const rows = compact ? 7 : 3;
+  labelSize.textContent = `24.08 × ${height} mm`;
+  labelPreview.style.aspectRatio = `24.08 / ${height}`;
+  pageFormat.options[1].textContent = `A4 sheet — ${count} stickers (7 × ${rows})`;
+  updateRangeSummary();
 }
 
 async function refreshPreview() {
@@ -85,6 +102,7 @@ async function refreshPreview() {
       row: state.rows[state.rowIndex],
       printerDpi: Number(printerDpi.value),
       fontFamily: printFont.value,
+      stickerMode: stickerMode.value,
     }),
   });
   if (!response.ok) {
@@ -124,7 +142,7 @@ fileInput.addEventListener('change', async event => {
       const firstAvailable = Array.from(printFont.options).find(option => !option.disabled);
       if (firstAvailable) printFont.value = firstAvailable.value;
     }
-    [startRecord, recordCount, printerDpi, pageFormat, printFont, generateButton].forEach(control => { control.disabled = false; });
+    [startRecord, recordCount, printerDpi, pageFormat, printFont, stickerMode, generateButton].forEach(control => { control.disabled = false; });
     exportCard.classList.remove('muted');
     rowNav.classList.remove('hidden');
     const skipped = data.skipped || {};
@@ -163,6 +181,10 @@ document.getElementById('next-row').addEventListener('click', async () => {
 printerDpi.addEventListener('change', refreshPreview);
 printFont.addEventListener('change', refreshPreview);
 pageFormat.addEventListener('change', updateRangeSummary);
+stickerMode.addEventListener('change', async () => {
+  updateModeUi();
+  await refreshPreview();
+});
 
 generateButton.addEventListener('click', async () => {
   if (!state.rows.length) return;
@@ -183,6 +205,7 @@ generateButton.addEventListener('click', async () => {
         printerDpi: Number(printerDpi.value),
         pageFormat: pageFormat.value,
         fontFamily: printFont.value,
+        stickerMode: stickerMode.value,
       }),
     });
     if (!response.ok) {
@@ -193,7 +216,8 @@ generateButton.addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    const suffix = pageFormat.value === 'a4' ? '_a4' : '';
+    const modeSuffix = stickerMode.value === 'compact' ? '_compact' : '';
+    const suffix = pageFormat.value === 'a4' ? `${modeSuffix}_a4` : modeSuffix;
     anchor.download = `stickers_${start}-${end}${suffix}.pdf`;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
