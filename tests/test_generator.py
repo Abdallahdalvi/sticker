@@ -375,6 +375,43 @@ def test_compact_text_mode_has_even_text_spacing_and_no_barcodes():
     assert height_mm == pytest.approx(server.COMPACT_LABEL_HEIGHT_MM, abs=0.02)
 
 
+def test_wide_text_mode_matches_73_by_12_reference_and_has_no_barcodes():
+    svg = server.render_to_svg(ROWS[0], sticker_mode="wide_text")
+    assert 'width="73.0mm"' in svg
+    assert 'height="12.0mm"' in svg
+    assert 'fill="#fff"' in svg
+    assert "Model No: 4G Dongle" in svg
+    assert "IMEI: 356789012345678" in svg
+    assert "Serial No: K34632721" in svg
+    assert "CCID: 89148000001234567890" in svg
+    assert "barcode" not in svg.lower()
+
+    data = server.render_to_pdf([ROWS[0]], sticker_mode="wide_text").getvalue()
+    page = PdfReader(io.BytesIO(data)).pages[0]
+    width_mm = float(page.mediabox.width) / 72 * 25.4
+    height_mm = float(page.mediabox.height) / 72 * 25.4
+    assert width_mm == pytest.approx(server.WIDE_LABEL_WIDTH_MM, abs=0.02)
+    assert height_mm == pytest.approx(server.WIDE_LABEL_HEIGHT_MM, abs=0.02)
+
+
+def test_wide_barcode_mode_matches_reference_content():
+    svg = server.render_to_svg(ROWS[0], sticker_mode="wide_barcodes")
+    assert 'width="73.0mm"' in svg
+    assert 'height="12.0mm"' in svg
+    assert "IMEI: 356789012345678" in svg
+    assert "CCID: 89148000001234567890" in svg
+    assert ">Model<" in svg
+    assert ">4G Dongle<" in svg
+    assert ">K34632721<" in svg
+
+    data = server.render_to_pdf([ROWS[0]], sticker_mode="wide_barcodes").getvalue()
+    page = PdfReader(io.BytesIO(data)).pages[0]
+    width_mm = float(page.mediabox.width) / 72 * 25.4
+    height_mm = float(page.mediabox.height) / 72 * 25.4
+    assert width_mm == pytest.approx(server.WIDE_LABEL_WIDTH_MM, abs=0.02)
+    assert height_mm == pytest.approx(server.WIDE_LABEL_HEIGHT_MM, abs=0.02)
+
+
 def test_fixed_artwork_is_vector_not_an_embedded_image():
     data = server.render_to_pdf([ROWS[0]], printer_dpi=600).getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]
@@ -441,6 +478,26 @@ def test_compact_text_a4_output_places_49_stickers_per_sheet():
     assert len(reader.pages) == 2
     assert "K00000048" in (reader.pages[0].extract_text() or "")
     assert "K00000049" in (reader.pages[1].extract_text() or "")
+
+
+@pytest.mark.parametrize("sticker_mode", ["wide_text", "wide_barcodes"])
+def test_wide_a4_output_places_36_stickers_per_sheet(sticker_mode: str):
+    rows = [
+        {
+            "Device ID": f"K{i:08d}",
+            "IMEI": str(356789012345000 + i),
+            "CCID": str(89148000001234567000 + i),
+            "Model": "4G Dongle",
+        }
+        for i in range(37)
+    ]
+    data = server.render_to_pdf(
+        rows, printer_dpi=600, page_format="a4", sticker_mode=sticker_mode
+    ).getvalue()
+    reader = PdfReader(io.BytesIO(data))
+    assert len(reader.pages) == 2
+    assert "K00000035" in (reader.pages[0].extract_text() or "")
+    assert "K00000036" in (reader.pages[1].extract_text() or "")
 
 
 def test_dense_ccid_is_rejected_at_300_dpi():
@@ -545,3 +602,38 @@ def test_compact_text_mode_outputs_only_the_qr_code(tmp_path: Path):
     assert len(decoded) == 1
     assert decoded[0].format.name == "QRCode"
     assert decoded[0].text == server._qr_payload(ROWS[0])
+
+
+@pytest.mark.parametrize(
+    ("sticker_mode", "expected_formats"),
+    [
+        ("wide_text", {"QRCode"}),
+        ("wide_barcodes", {"QRCode", "Code128"}),
+    ],
+)
+def test_wide_modes_export_scannable_codes(
+    tmp_path: Path, sticker_mode: str, expected_formats: set[str]
+):
+    pdftoppm = _find_pdftoppm()
+    if not pdftoppm:
+        pytest.skip("pdftoppm is not installed")
+    zxingcpp = pytest.importorskip("zxingcpp")
+    pdf_path = tmp_path / f"{sticker_mode}.pdf"
+    image_prefix = tmp_path / sticker_mode
+    pdf_path.write_bytes(
+        server.render_to_pdf(
+            [ROWS[0]], printer_dpi=600, sticker_mode=sticker_mode
+        ).getvalue()
+    )
+    subprocess.run(
+        [pdftoppm, "-png", "-r", "600", "-f", "1", "-singlefile", str(pdf_path), str(image_prefix)],
+        check=True,
+        capture_output=True,
+    )
+    decoded = zxingcpp.read_barcodes(Image.open(image_prefix.with_suffix(".png")))
+    assert {result.format.name for result in decoded} == expected_formats
+    values = {result.text for result in decoded}
+    assert server._qr_payload(ROWS[0]) in values
+    if sticker_mode == "wide_barcodes":
+        assert ROWS[0]["IMEI"] in values
+        assert ROWS[0]["CCID"] in values

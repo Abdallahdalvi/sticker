@@ -23,6 +23,14 @@ const rowNav = document.getElementById('row-nav');
 const rowLabel = document.getElementById('row-label');
 const summaryValues = document.querySelectorAll('#data-summary strong');
 
+const modeConfig = {
+  standard: { width: 24.08, height: 74.08, labelsPerSheet: 21, columns: 7, rows: 3, codes: 3, suffix: '' },
+  compact: { width: 24.08, height: 34, labelsPerSheet: 49, columns: 7, rows: 7, codes: 3, suffix: '_compact' },
+  compact_text: { width: 24.08, height: 34, labelsPerSheet: 49, columns: 7, rows: 7, codes: 1, suffix: '_compact_text' },
+  wide_text: { width: 73, height: 12, labelsPerSheet: 36, columns: 2, rows: 18, codes: 1, suffix: '_wide_text' },
+  wide_barcodes: { width: 73, height: 12, labelsPerSheet: 36, columns: 2, rows: 18, codes: 3, suffix: '_wide_barcodes' },
+};
+
 function setBusy(busy, text = '') {
   fileInput.disabled = busy;
   generateButton.disabled = busy || !state.rows.length;
@@ -69,27 +77,22 @@ function updateRangeSummary() {
   const records = Math.min(available, Math.max(1, Number(recordCount.value) || available));
   startRecord.value = start;
   recordCount.value = records;
-  const compact = stickerMode.value !== 'standard';
-  const textOnly = stickerMode.value === 'compact_text';
-  const labelsPerSheet = compact ? 49 : 21;
-  const rowsPerSheet = compact ? 7 : 3;
-  const pages = pageFormat.value === 'a4' ? Math.ceil(records / labelsPerSheet) : records;
+  const config = modeConfig[stickerMode.value] || modeConfig.standard;
+  const pages = pageFormat.value === 'a4' ? Math.ceil(records / config.labelsPerSheet) : records;
   summaryValues[0].textContent = records.toLocaleString();
   summaryValues[1].textContent = pages.toLocaleString();
-  summaryValues[2].textContent = textOnly ? '1' : '3';
+  summaryValues[2].textContent = config.codes;
   printWarning.textContent = pageFormat.value === 'a4'
-    ? `A4: ${labelsPerSheet} stickers per sheet (7 × ${rowsPerSheet}) with 4 mm cutting gaps. Print at 100% / Actual Size.`
+    ? `A4: ${config.labelsPerSheet} stickers per sheet (${config.columns} × ${config.rows}) with 4 mm cutting gaps. Print at 100% / Actual Size.`
     : 'Print at 100% / Actual Size. Do not use “Fit to page”.';
 }
 
 function updateModeUi() {
-  const compact = stickerMode.value !== 'standard';
-  const height = compact ? 34 : 74.08;
-  const count = compact ? 49 : 21;
-  const rows = compact ? 7 : 3;
-  labelSize.textContent = `24.08 × ${height} mm`;
-  labelPreview.style.aspectRatio = `24.08 / ${height}`;
-  pageFormat.options[1].textContent = `A4 sheet — ${count} stickers (7 × ${rows})`;
+  const config = modeConfig[stickerMode.value] || modeConfig.standard;
+  labelSize.textContent = `${config.width} × ${config.height} mm`;
+  labelPreview.style.aspectRatio = `${config.width} / ${config.height}`;
+  labelPreview.classList.toggle('wide-label', config.width > config.height * 2);
+  pageFormat.options[1].textContent = `A4 sheet — ${config.labelsPerSheet} stickers (${config.columns} × ${config.rows})`;
   updateRangeSummary();
 }
 
@@ -221,9 +224,7 @@ generateButton.addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    const modeSuffix = stickerMode.value === 'compact'
-      ? '_compact'
-      : stickerMode.value === 'compact_text' ? '_compact_text' : '';
+    const modeSuffix = (modeConfig[stickerMode.value] || modeConfig.standard).suffix;
     const suffix = pageFormat.value === 'a4' ? `${modeSuffix}_a4` : modeSuffix;
     anchor.download = `stickers_${start}-${end}${suffix}.pdf`;
     anchor.click();

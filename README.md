@@ -2,11 +2,13 @@
 
 Local web application for producing scanner-ready Reliance 4G dongle labels from Excel, CSV, or supported PDF data.
 
-The generator supports three label designs with the same **24.08 mm** width:
+The generator supports five label designs:
 
 - **Full design — 24.08 × 74.08 mm**, matching the supplied reference PDF
 - **Compact with barcodes — 24.08 × 34 mm**, with a one-line DC input rating and no Reliance logo, power/connectivity/IoT icons, or connectivity text
 - **Compact text only — 24.08 × 34 mm**, retaining DC input, Model, S/N, CCID, IMEI, QR, and Make in India without Code 128 barcodes
+- **Wide text + QR — 73 × 12 mm**, with Model/IMEI and Serial No/CCID text rows plus QR on a white background
+- **Wide barcodes + QR — 73 × 12 mm**, with separate IMEI and CCID Code 128 symbols, centered model, and QR/S/N on a white background
 
 Each accepted input row becomes one physical-size sticker with:
 
@@ -98,8 +100,8 @@ Identifier cells in `.xlsx` files must be formatted as **Text**. Numeric or form
 - Print at **100% / Actual Size**.
 - Disable “Fit to page”, scaling, and browser headers/footers.
 - **Individual sticker pages** contain one sticker per physical-size page for roll/thermal printing.
-- **A4 sticker sheets** contain 21 full-design stickers (7 × 3) or 49 compact stickers (7 × 7) per page, centered with 4 mm cutting gutters.
-- The compact text-only mode reports one code per label because only the QR is printed.
+- **A4 sticker sheets** contain 21 full-design stickers (7 × 3), 49 compact stickers (7 × 7), or 36 wide stickers (2 × 18) per page, centered with 4 mm cutting gutters.
+- The compact text-only and wide text modes report one code per label because only the QR is printed.
 
 The app calculates the Code 128 narrow-module width before export. A 300 DPI export is rejected when the selected values cannot maintain two printer dots per narrow module.
 

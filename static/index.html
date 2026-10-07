@@ -70,8 +70,10 @@
                 <option value="standard" selected>Full design — 24.08 × 74.08 mm</option>
                 <option value="compact">Compact with barcodes — 24.08 × 34 mm</option>
                 <option value="compact_text">Compact text only — 24.08 × 34 mm</option>
+                <option value="wide_text">Wide text + QR — 73 × 12 mm</option>
+                <option value="wide_barcodes">Wide barcodes + QR — 73 × 12 mm</option>
               </select>
-              <small>Text-only compact removes both barcodes but keeps identifiers, QR, and Make in India.</small>
+              <small>Wide modes use a white background and match the 73 × 12 mm reference format.</small>
             </label>
             <label class="select-label">Output layout
               <select id="page-format" disabled>
@@ -117,6 +119,6 @@
     </section>
   </main>
 
-  <script src="editor.js?v=19"></script>
+  <script src="editor.js?v=20"></script>
 </body>
 </html>

@@ -58,6 +58,11 @@ A4_ROWS = 3
 A4_LABELS_PER_PAGE = A4_COLUMNS * A4_ROWS
 COMPACT_A4_ROWS = 7
 COMPACT_A4_LABELS_PER_PAGE = A4_COLUMNS * COMPACT_A4_ROWS
+WIDE_LABEL_WIDTH_MM = 73.0
+WIDE_LABEL_HEIGHT_MM = 12.0
+WIDE_A4_COLUMNS = 2
+WIDE_A4_ROWS = 18
+WIDE_A4_LABELS_PER_PAGE = WIDE_A4_COLUMNS * WIDE_A4_ROWS
 A4_GUTTER_MM = 4.0
 UPPER_SEPARATOR_Y_MM = 20.85
 TECH_SECTION_WIDTH_MM = 22.67
@@ -220,27 +225,80 @@ COMPACT_BODY_FONT_PT = 4.78
 COMPACT_CODE_FONT_PT = 4.14
 COMPACT_TEXT_EDGE_MARGIN_MM = 2.05
 
+WIDE_TEXT_LAYOUT = {
+    "info_x": 1.50,
+    "info_right": 60.50,
+    "first_baseline": 4.10,
+    "second_baseline": 8.55,
+    "qr_x": 62.0,
+    "qr_top": 1.0,
+    "qr_size": 10.0,
+}
+WIDE_BARCODE_LAYOUT = {
+    "barcode_top": 0.75,
+    "barcode_h": 6.35,
+    "barcode_w": 20.0,
+    "imei_barcode_x": 1.0,
+    "ccid_barcode_x": 22.0,
+    "barcode_text_top": 10.45,
+    "model_x": 43.0,
+    "model_w": 18.0,
+    "model_label_top": 4.40,
+    "model_value_top": 7.45,
+    "qr_x": 63.0,
+    "qr_top": 0.60,
+    "qr_size": 8.50,
+    "device_text_top": 11.15,
+}
+WIDE_TEXT_FONT_PT = 5.80
+WIDE_BARCODE_TEXT_FONT_PT = 3.80
+WIDE_MODEL_FONT_PT = 4.20
+
 STICKER_MODES = {
     "standard": {
+        "label_width_mm": LABEL_WIDTH_MM,
         "label_height_mm": LABEL_HEIGHT_MM,
+        "a4_columns": A4_COLUMNS,
         "a4_rows": A4_ROWS,
         "labels_per_page": A4_LABELS_PER_PAGE,
         "label": "Full design",
         "has_barcodes": True,
     },
     "compact": {
+        "label_width_mm": LABEL_WIDTH_MM,
         "label_height_mm": COMPACT_LABEL_HEIGHT_MM,
+        "a4_columns": A4_COLUMNS,
         "a4_rows": COMPACT_A4_ROWS,
         "labels_per_page": COMPACT_A4_LABELS_PER_PAGE,
         "label": "Compact 34 mm",
         "has_barcodes": True,
     },
     "compact_text": {
+        "label_width_mm": LABEL_WIDTH_MM,
         "label_height_mm": COMPACT_LABEL_HEIGHT_MM,
+        "a4_columns": A4_COLUMNS,
         "a4_rows": COMPACT_A4_ROWS,
         "labels_per_page": COMPACT_A4_LABELS_PER_PAGE,
         "label": "Compact text only",
         "has_barcodes": False,
+    },
+    "wide_text": {
+        "label_width_mm": WIDE_LABEL_WIDTH_MM,
+        "label_height_mm": WIDE_LABEL_HEIGHT_MM,
+        "a4_columns": WIDE_A4_COLUMNS,
+        "a4_rows": WIDE_A4_ROWS,
+        "labels_per_page": WIDE_A4_LABELS_PER_PAGE,
+        "label": "Wide text + QR",
+        "has_barcodes": False,
+    },
+    "wide_barcodes": {
+        "label_width_mm": WIDE_LABEL_WIDTH_MM,
+        "label_height_mm": WIDE_LABEL_HEIGHT_MM,
+        "a4_columns": WIDE_A4_COLUMNS,
+        "a4_rows": WIDE_A4_ROWS,
+        "labels_per_page": WIDE_A4_LABELS_PER_PAGE,
+        "label": "Wide barcodes + QR",
+        "has_barcodes": True,
     },
 }
 
@@ -729,16 +787,67 @@ def _draw_barcode(
     layout: dict[str, float] = LAYOUT,
     label_height_mm: float = LABEL_HEIGHT_MM,
 ) -> None:
-    x_pt = layout["barcode_x"] * mm
-    width_pt = layout["barcode_w"] * mm
-    height_pt = layout["barcode_h"] * mm
-    y_pt = (label_height_mm - top_mm - layout["barcode_h"]) * mm
+    _draw_barcode_in_box(
+        canvas,
+        value,
+        layout["barcode_x"],
+        top_mm,
+        layout["barcode_w"],
+        layout["barcode_h"],
+        printer_dpi,
+        label_height_mm,
+    )
+
+
+def _draw_barcode_in_box(
+    canvas: rl_canvas.Canvas,
+    value: str,
+    x_mm: float,
+    top_mm: float,
+    width_mm: float,
+    height_mm: float,
+    printer_dpi: int,
+    label_height_mm: float,
+) -> None:
+    x_pt = x_mm * mm
+    width_pt = width_mm * mm
+    height_pt = height_mm * mm
+    y_pt = (label_height_mm - top_mm - height_mm) * mm
     barcode, _, quiet_pt = _barcode_spec(value, width_pt, printer_dpi)
     barcode.barHeight = height_pt
     canvas.setFillColorRGB(1, 1, 1)
     canvas.rect(x_pt, y_pt, width_pt, height_pt, fill=1, stroke=0)
     canvas.setFillColorRGB(0, 0, 0)
     barcode.drawOn(canvas, x_pt + quiet_pt, y_pt)
+
+
+def _draw_qr_in_box(
+    canvas: rl_canvas.Canvas,
+    payload: str,
+    x_mm: float,
+    top_mm: float,
+    size_mm: float,
+    label_height_mm: float,
+) -> None:
+    matrix = _qr_matrix(payload)
+    qr_x = x_mm * mm
+    qr_size = size_mm * mm
+    qr_y = (label_height_mm - top_mm - size_mm) * mm
+    cell = qr_size / len(matrix)
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
+    canvas.setFillColorRGB(0, 0, 0)
+    for row_idx, cells in enumerate(matrix):
+        for col_idx, dark in enumerate(cells):
+            if dark:
+                canvas.rect(
+                    qr_x + col_idx * cell,
+                    qr_y + (len(matrix) - row_idx - 1) * cell,
+                    cell,
+                    cell,
+                    fill=1,
+                    stroke=0,
+                )
 
 
 def _draw_traced_contours(
@@ -1013,6 +1122,146 @@ def _draw_compact_text_sticker(
                 )
 
 
+def _draw_wide_text_sticker(
+    canvas: rl_canvas.Canvas,
+    row: dict[str, str],
+    printer_dpi: int,
+    font: StickerFont,
+) -> None:
+    del printer_dpi
+    layout = WIDE_TEXT_LAYOUT
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.rect(0, 0, WIDE_LABEL_WIDTH_MM * mm, WIDE_LABEL_HEIGHT_MM * mm, fill=1, stroke=0)
+    model = row.get("Model", "") or "4G Dongle"
+    lines = (
+        f"Model No: {model}    IMEI: {row['IMEI']}",
+        f"Serial No: {row['Device ID']}    CCID: {row['CCID']}",
+    )
+    max_width_pt = (layout["info_right"] - layout["info_x"]) * mm
+    canvas.setFillColorRGB(0, 0, 0)
+    for text_value, baseline_top in zip(
+        lines, (layout["first_baseline"], layout["second_baseline"])
+    ):
+        size = _fitted_font_size(
+            text_value,
+            max_width_pt,
+            WIDE_TEXT_FONT_PT,
+            minimum_pt=3.2,
+            font_name=font.pdf_name,
+        )
+        canvas.setFont(font.pdf_name, size)
+        canvas.drawString(
+            layout["info_x"] * mm,
+            (WIDE_LABEL_HEIGHT_MM - baseline_top) * mm,
+            text_value,
+        )
+    _draw_qr_in_box(
+        canvas,
+        _qr_payload(row),
+        layout["qr_x"],
+        layout["qr_top"],
+        layout["qr_size"],
+        WIDE_LABEL_HEIGHT_MM,
+    )
+
+
+def _draw_wide_barcode_sticker(
+    canvas: rl_canvas.Canvas,
+    row: dict[str, str],
+    printer_dpi: int,
+    font: StickerFont,
+) -> None:
+    layout = WIDE_BARCODE_LAYOUT
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.rect(0, 0, WIDE_LABEL_WIDTH_MM * mm, WIDE_LABEL_HEIGHT_MM * mm, fill=1, stroke=0)
+    _draw_barcode_in_box(
+        canvas,
+        row["IMEI"],
+        layout["imei_barcode_x"],
+        layout["barcode_top"],
+        layout["barcode_w"],
+        layout["barcode_h"],
+        printer_dpi,
+        WIDE_LABEL_HEIGHT_MM,
+    )
+    _draw_barcode_in_box(
+        canvas,
+        row["CCID"],
+        layout["ccid_barcode_x"],
+        layout["barcode_top"],
+        layout["barcode_w"],
+        layout["barcode_h"],
+        printer_dpi,
+        WIDE_LABEL_HEIGHT_MM,
+    )
+
+    canvas.setFillColorRGB(0, 0, 0)
+    for text_value, x_mm in (
+        (f"IMEI: {row['IMEI']}", layout["imei_barcode_x"]),
+        (f"CCID: {row['CCID']}", layout["ccid_barcode_x"]),
+    ):
+        size = _fitted_font_size(
+            text_value,
+            layout["barcode_w"] * mm,
+            WIDE_BARCODE_TEXT_FONT_PT,
+            minimum_pt=2.8,
+            font_name=font.pdf_name,
+        )
+        canvas.setFont(font.pdf_name, size)
+        canvas.drawString(
+            x_mm * mm,
+            (WIDE_LABEL_HEIGHT_MM - layout["barcode_text_top"]) * mm,
+            text_value,
+        )
+
+    model = row.get("Model", "") or "4G Dongle"
+    model_center_pt = (layout["model_x"] + layout["model_w"] / 2) * mm
+    for text_value, baseline_top in (
+        ("Model", layout["model_label_top"]),
+        (model, layout["model_value_top"]),
+    ):
+        size = _fitted_font_size(
+            text_value,
+            layout["model_w"] * mm,
+            WIDE_MODEL_FONT_PT,
+            minimum_pt=2.8,
+            font_name=font.pdf_name,
+        )
+        text_width = pdfmetrics.stringWidth(text_value, font.pdf_name, size)
+        canvas.setFont(font.pdf_name, size)
+        canvas.drawString(
+            model_center_pt - text_width / 2,
+            (WIDE_LABEL_HEIGHT_MM - baseline_top) * mm,
+            text_value,
+        )
+
+    _draw_qr_in_box(
+        canvas,
+        _qr_payload(row),
+        layout["qr_x"],
+        layout["qr_top"],
+        layout["qr_size"],
+        WIDE_LABEL_HEIGHT_MM,
+    )
+    device_value = row["Device ID"]
+    device_width_pt = layout["qr_size"] * mm
+    device_size = _fitted_font_size(
+        device_value,
+        device_width_pt,
+        WIDE_BARCODE_TEXT_FONT_PT,
+        minimum_pt=2.4,
+        font_name=font.pdf_name,
+    )
+    device_text_width = pdfmetrics.stringWidth(device_value, font.pdf_name, device_size)
+    canvas.setFillColorRGB(0, 0, 0)
+    canvas.setFont(font.pdf_name, device_size)
+    canvas.drawString(
+        (layout["qr_x"] + layout["qr_size"] / 2) * mm - device_text_width / 2,
+        (WIDE_LABEL_HEIGHT_MM - layout["device_text_top"]) * mm,
+        device_value,
+    )
+
+
 def render_to_pdf(
     rows: list[dict[str, str]],
     printer_dpi: int = 600,
@@ -1025,28 +1274,37 @@ def render_to_pdf(
     if page_format not in ("label", "a4"):
         raise ValueError("Page format must be 'label' or 'a4'.")
     if sticker_mode not in STICKER_MODES:
-        raise ValueError("Sticker mode must be 'standard', 'compact' or 'compact_text'.")
+        raise ValueError("Unsupported sticker mode.")
     font = _get_sticker_font(font_key)
     mode = STICKER_MODES[sticker_mode]
     layout = LAYOUT if sticker_mode == "standard" else COMPACT_LAYOUT
+    label_width_mm = float(mode["label_width_mm"])
     label_height_mm = float(mode["label_height_mm"])
+    a4_columns = int(mode["a4_columns"])
     a4_rows = int(mode["a4_rows"])
     labels_per_page = int(mode["labels_per_page"])
     draw_sticker = {
         "standard": _draw_sticker,
         "compact": _draw_compact_sticker,
         "compact_text": _draw_compact_text_sticker,
+        "wide_text": _draw_wide_text_sticker,
+        "wide_barcodes": _draw_wide_barcode_sticker,
     }[sticker_mode]
     errors = validate_rows(rows)
     if errors:
         raise ValueError("Input rows failed validation.")
     if mode["has_barcodes"]:
+        barcode_width_mm = (
+            WIDE_BARCODE_LAYOUT["barcode_w"]
+            if sticker_mode == "wide_barcodes"
+            else layout["barcode_w"]
+        )
         for row in rows:
-            _barcode_spec(row["CCID"], layout["barcode_w"] * mm, printer_dpi)
-            _barcode_spec(row["IMEI"], layout["barcode_w"] * mm, printer_dpi)
+            _barcode_spec(row["CCID"], barcode_width_mm * mm, printer_dpi)
+            _barcode_spec(row["IMEI"], barcode_width_mm * mm, printer_dpi)
 
     buffer = io.BytesIO()
-    pagesize = (LABEL_WIDTH_MM * mm, label_height_mm * mm) if page_format == "label" else A4
+    pagesize = (label_width_mm * mm, label_height_mm * mm) if page_format == "label" else A4
     canvas = rl_canvas.Canvas(buffer, pagesize=pagesize, pageCompression=1)
     canvas.setTitle("Bulk device stickers" if page_format == "label" else "A4 bulk device sticker sheets")
 
@@ -1058,7 +1316,7 @@ def render_to_pdf(
     else:
         a4_width_mm = A4[0] / mm
         a4_height_mm = A4[1] / mm
-        grid_width_mm = A4_COLUMNS * LABEL_WIDTH_MM + (A4_COLUMNS - 1) * A4_GUTTER_MM
+        grid_width_mm = a4_columns * label_width_mm + (a4_columns - 1) * A4_GUTTER_MM
         grid_height_mm = a4_rows * label_height_mm + (a4_rows - 1) * A4_GUTTER_MM
         left_mm = (a4_width_mm - grid_width_mm) / 2
         top_mm = (a4_height_mm - grid_height_mm) / 2
@@ -1066,9 +1324,9 @@ def render_to_pdf(
             slot = index % labels_per_page
             if index and slot == 0:
                 canvas.showPage()
-            column = slot % A4_COLUMNS
-            grid_row = slot // A4_COLUMNS
-            x_mm = left_mm + column * (LABEL_WIDTH_MM + A4_GUTTER_MM)
+            column = slot % a4_columns
+            grid_row = slot // a4_columns
+            x_mm = left_mm + column * (label_width_mm + A4_GUTTER_MM)
             y_mm = a4_height_mm - top_mm - label_height_mm - grid_row * (label_height_mm + A4_GUTTER_MM)
             canvas.saveState()
             canvas.translate(x_mm * mm, y_mm * mm)
@@ -1135,16 +1393,34 @@ def _svg_barcode(
     printer_dpi: int,
     layout: dict[str, float] = LAYOUT,
 ) -> str:
+    return _svg_barcode_in_box(
+        value,
+        layout["barcode_x"],
+        top_mm,
+        layout["barcode_w"],
+        layout["barcode_h"],
+        printer_dpi,
+    )
+
+
+def _svg_barcode_in_box(
+    value: str,
+    x_mm: float,
+    top_mm: float,
+    width_mm: float,
+    height_mm: float,
+    printer_dpi: int,
+) -> str:
     pattern, modules = _barcode_pattern(value)
     total = modules + 20
-    module_w = layout["barcode_w"] / total
+    module_w = width_mm / total
     minimum_mm = (2 * 25.4) / printer_dpi
     if module_w + 1e-9 < minimum_mm:
         raise ValueError(f"Barcode {value!r} is too dense for {printer_dpi} DPI.")
-    x = layout["barcode_x"] + 10 * module_w
+    x = x_mm + 10 * module_w
     pieces = [
-        f'<rect x="{layout["barcode_x"]:.4f}" y="{top_mm:.4f}" width="{layout["barcode_w"]:.4f}" '
-        f'height="{layout["barcode_h"]:.4f}" fill="#fff"/>'
+        f'<rect x="{x_mm:.4f}" y="{top_mm:.4f}" width="{width_mm:.4f}" '
+        f'height="{height_mm:.4f}" fill="#fff"/>'
     ]
     is_bar = True
     for char in pattern:
@@ -1153,7 +1429,7 @@ def _svg_barcode(
         if is_bar:
             pieces.append(
                 f'<rect x="{x:.4f}" y="{top_mm:.4f}" width="{width:.4f}" '
-                f'height="{layout["barcode_h"]:.4f}" fill="#000"/>'
+                f'height="{height_mm:.4f}" fill="#000"/>'
             )
         x += width
         is_bar = not is_bar
@@ -1247,6 +1523,94 @@ def _render_compact_text_svg(row: dict[str, str], font: StickerFont) -> str:
     )
 
 
+def _render_wide_text_svg(row: dict[str, str], font: StickerFont) -> str:
+    layout = WIDE_TEXT_LAYOUT
+    model = row.get("Model", "") or "4G Dongle"
+    lines = (
+        html.escape(f"Model No: {model}    IMEI: {row['IMEI']}"),
+        html.escape(f"Serial No: {row['Device ID']}    CCID: {row['CCID']}"),
+    )
+    max_width_pt = (layout["info_right"] - layout["info_x"]) * mm
+    sizes = [
+        _fitted_font_size(
+            line,
+            max_width_pt,
+            WIDE_TEXT_FONT_PT,
+            minimum_pt=3.2,
+            font_name=font.pdf_name,
+        )
+        for line in lines
+    ]
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDE_LABEL_WIDTH_MM}mm" '
+        f'height="{WIDE_LABEL_HEIGHT_MM}mm" viewBox="0 0 {WIDE_LABEL_WIDTH_MM} {WIDE_LABEL_HEIGHT_MM}">'
+        f'{_svg_font_style(font)}'
+        '<rect width="100%" height="100%" fill="#fff"/>'
+        '<g class="dynamic-text" fill="#000">'
+        f'<text x="{layout["info_x"]}" y="{layout["first_baseline"]}" font-size="{sizes[0] / mm:.4f}">{lines[0]}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["second_baseline"]}" font-size="{sizes[1] / mm:.4f}">{lines[1]}</text>'
+        '</g>'
+        f'{_svg_qr(row, layout)}'
+        '</svg>'
+    )
+
+
+def _render_wide_barcode_svg(
+    row: dict[str, str], printer_dpi: int, font: StickerFont
+) -> str:
+    layout = WIDE_BARCODE_LAYOUT
+    model = row.get("Model", "") or "4G Dongle"
+    imei_line = html.escape(f"IMEI: {row['IMEI']}")
+    ccid_line = html.escape(f"CCID: {row['CCID']}")
+    imei_size = _fitted_font_size(
+        imei_line,
+        layout["barcode_w"] * mm,
+        WIDE_BARCODE_TEXT_FONT_PT,
+        minimum_pt=2.8,
+        font_name=font.pdf_name,
+    )
+    ccid_size = _fitted_font_size(
+        ccid_line,
+        layout["barcode_w"] * mm,
+        WIDE_BARCODE_TEXT_FONT_PT,
+        minimum_pt=2.8,
+        font_name=font.pdf_name,
+    )
+    model_size = _fitted_font_size(
+        model,
+        layout["model_w"] * mm,
+        WIDE_MODEL_FONT_PT,
+        minimum_pt=2.8,
+        font_name=font.pdf_name,
+    )
+    device_size = _fitted_font_size(
+        row["Device ID"],
+        layout["qr_size"] * mm,
+        WIDE_BARCODE_TEXT_FONT_PT,
+        minimum_pt=2.4,
+        font_name=font.pdf_name,
+    )
+    model_center = layout["model_x"] + layout["model_w"] / 2
+    qr_center = layout["qr_x"] + layout["qr_size"] / 2
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDE_LABEL_WIDTH_MM}mm" '
+        f'height="{WIDE_LABEL_HEIGHT_MM}mm" viewBox="0 0 {WIDE_LABEL_WIDTH_MM} {WIDE_LABEL_HEIGHT_MM}">'
+        f'{_svg_font_style(font)}'
+        '<rect width="100%" height="100%" fill="#fff"/>'
+        f'{_svg_barcode_in_box(row["IMEI"], layout["imei_barcode_x"], layout["barcode_top"], layout["barcode_w"], layout["barcode_h"], printer_dpi)}'
+        f'{_svg_barcode_in_box(row["CCID"], layout["ccid_barcode_x"], layout["barcode_top"], layout["barcode_w"], layout["barcode_h"], printer_dpi)}'
+        '<g class="dynamic-text" fill="#000">'
+        f'<text x="{layout["imei_barcode_x"]}" y="{layout["barcode_text_top"]}" font-size="{imei_size / mm:.4f}">{imei_line}</text>'
+        f'<text x="{layout["ccid_barcode_x"]}" y="{layout["barcode_text_top"]}" font-size="{ccid_size / mm:.4f}">{ccid_line}</text>'
+        f'<text x="{model_center}" y="{layout["model_label_top"]}" text-anchor="middle" font-size="{WIDE_MODEL_FONT_PT / mm:.4f}">Model</text>'
+        f'<text x="{model_center}" y="{layout["model_value_top"]}" text-anchor="middle" font-size="{model_size / mm:.4f}">{html.escape(model)}</text>'
+        f'<text x="{qr_center}" y="{layout["device_text_top"]}" text-anchor="middle" font-size="{device_size / mm:.4f}">{html.escape(row["Device ID"])}</text>'
+        '</g>'
+        f'{_svg_qr(row, layout)}'
+        '</svg>'
+    )
+
+
 def render_to_svg(
     row: dict[str, str],
     printer_dpi: int = 600,
@@ -1258,11 +1622,15 @@ def render_to_svg(
         raise ValueError(errors[0]["message"])
     font = _get_sticker_font(font_key)
     if sticker_mode not in STICKER_MODES:
-        raise ValueError("Sticker mode must be 'standard', 'compact' or 'compact_text'.")
+        raise ValueError("Unsupported sticker mode.")
     if sticker_mode == "compact":
         return _render_compact_svg(row, printer_dpi, font)
     if sticker_mode == "compact_text":
         return _render_compact_text_svg(row, font)
+    if sticker_mode == "wide_text":
+        return _render_wide_text_svg(row, font)
+    if sticker_mode == "wide_barcodes":
+        return _render_wide_barcode_svg(row, printer_dpi, font)
     vector_art = _svg_vector_art()
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
@@ -1325,8 +1693,12 @@ async def upload_file(file: UploadFile = File(...)):
             {
                 "value": key,
                 "label": mode["label"],
-                "widthMm": LABEL_WIDTH_MM,
+                "widthMm": mode["label_width_mm"],
                 "heightMm": mode["label_height_mm"],
+                "a4Columns": mode["a4_columns"],
+                "a4Rows": mode["a4_rows"],
+                "labelsPerPage": mode["labels_per_page"],
+                "codesPerLabel": 3 if mode["has_barcodes"] else 1,
             }
             for key, mode in STICKER_MODES.items()
         ],
@@ -1386,6 +1758,8 @@ async def generate_pdf(request: GenerateRequest):
         "standard": "",
         "compact": "_compact",
         "compact_text": "_compact_text",
+        "wide_text": "_wide_text",
+        "wide_barcodes": "_wide_barcodes",
     }.get(request.sticker_mode, "")
     suffix = f"{mode_suffix}_a4" if request.page_format == "a4" else mode_suffix
     filename = f"stickers_{request.start}-{end}{suffix}.pdf"
@@ -1412,6 +1786,7 @@ async def health():
         "ok": True,
         "labelMm": [LABEL_WIDTH_MM, LABEL_HEIGHT_MM],
         "compactLabelMm": [LABEL_WIDTH_MM, COMPACT_LABEL_HEIGHT_MM],
+        "wideLabelMm": [WIDE_LABEL_WIDTH_MM, WIDE_LABEL_HEIGHT_MM],
     }
 
 
