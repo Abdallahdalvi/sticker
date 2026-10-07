@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -419,6 +420,10 @@ def test_wide_modes_use_equal_internal_column_gutters():
         text_layout["qr_x"] - (text_layout["right_x"] + text_layout["right_w"]),
     ]
     assert text_gaps == pytest.approx([1.5, 1.5], abs=0.001)
+    assert text_layout["left_x"] == pytest.approx(
+        server.WIDE_LABEL_WIDTH_MM - text_layout["qr_x"] - text_layout["qr_size"],
+        abs=0.001,
+    )
 
     barcode_layout = server.WIDE_BARCODE_LAYOUT
     barcode_gaps = [
@@ -430,6 +435,39 @@ def test_wide_modes_use_equal_internal_column_gutters():
         - (barcode_layout["model_x"] + barcode_layout["model_w"]),
     ]
     assert barcode_gaps == pytest.approx([1.5, 1.5, 1.5], abs=0.001)
+    assert barcode_layout["imei_barcode_x"] == pytest.approx(
+        server.WIDE_LABEL_WIDTH_MM
+        - barcode_layout["qr_column_x"]
+        - barcode_layout["qr_column_w"],
+        abs=0.001,
+    )
+
+
+def test_wide_text_uses_one_font_size_and_barcode_captions_align_to_bars():
+    namespace = {"svg": "http://www.w3.org/2000/svg"}
+    text_svg = ET.fromstring(server.render_to_svg(ROWS[0], sticker_mode="wide_text"))
+    text_nodes = text_svg.findall("svg:g/svg:text", namespace)
+    assert len(text_nodes) == 4
+    assert len({node.attrib["font-size"] for node in text_nodes}) == 1
+
+    barcode_svg = ET.fromstring(
+        server.render_to_svg(ROWS[0], sticker_mode="wide_barcodes")
+    )
+    caption_nodes = {
+        node.text.split(":", 1)[0]: node
+        for node in barcode_svg.findall("svg:g/svg:text", namespace)
+        if node.text and node.text.startswith(("IMEI:", "CCID:"))
+    }
+    assert caption_nodes["IMEI"].attrib["font-size"] == caption_nodes["CCID"].attrib["font-size"]
+    layout = server.WIDE_BARCODE_LAYOUT
+    expected_imei_x, _ = server._barcode_content_box_mm(
+        ROWS[0]["IMEI"], layout["imei_barcode_x"], layout["imei_barcode_w"]
+    )
+    expected_ccid_x, _ = server._barcode_content_box_mm(
+        ROWS[0]["CCID"], layout["ccid_barcode_x"], layout["ccid_barcode_w"]
+    )
+    assert float(caption_nodes["IMEI"].attrib["x"]) == pytest.approx(expected_imei_x, abs=0.001)
+    assert float(caption_nodes["CCID"].attrib["x"]) == pytest.approx(expected_ccid_x, abs=0.001)
 
 
 def test_fixed_artwork_is_vector_not_an_embedded_image():

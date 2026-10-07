@@ -227,33 +227,33 @@ COMPACT_TEXT_EDGE_MARGIN_MM = 2.05
 
 WIDE_TEXT_LAYOUT = {
     "left_x": 1.50,
-    "left_w": 23.00,
-    "right_x": 26.00,
-    "right_w": 34.50,
+    "left_w": 27.00,
+    "right_x": 30.00,
+    "right_w": 30.00,
     "first_baseline": 4.35,
     "second_baseline": 8.65,
-    "qr_x": 62.0,
+    "qr_x": 61.5,
     "qr_top": 1.0,
     "qr_size": 10.0,
 }
 WIDE_BARCODE_LAYOUT = {
-    "barcode_top": 0.75,
-    "barcode_h": 7.20,
+    "barcode_top": 0.90,
+    "barcode_h": 7.40,
     "imei_barcode_x": 1.0,
     "imei_barcode_w": 19.20,
     "ccid_barcode_x": 21.70,
     "ccid_barcode_w": 21.30,
-    "barcode_text_top": 10.45,
+    "barcode_text_top": 10.85,
     "model_x": 44.50,
     "model_w": 15.00,
-    "model_label_top": 4.45,
-    "model_value_top": 7.35,
+    "model_label_top": 4.95,
+    "model_value_top": 7.85,
     "qr_column_x": 61.0,
     "qr_column_w": 11.0,
     "qr_x": 61.90,
-    "qr_top": 0.60,
+    "qr_top": 0.50,
     "qr_size": 9.20,
-    "device_text_top": 11.35,
+    "device_text_top": 10.85,
 }
 WIDE_TEXT_FONT_PT = 5.80
 WIDE_BARCODE_TEXT_FONT_PT = 3.80
@@ -736,6 +736,13 @@ def _barcode_pattern(value: str) -> tuple[str, int]:
     return pattern, total_modules
 
 
+def _barcode_content_box_mm(value: str, x_mm: float, width_mm: float) -> tuple[float, float]:
+    """Return the visible black-bar bounds, excluding the required quiet zones."""
+    _, modules = _barcode_pattern(value)
+    quiet_mm = width_mm * 10 / (modules + 20)
+    return x_mm + quiet_mm, width_mm - 2 * quiet_mm
+
+
 def _qr_matrix(value: str) -> list[list[bool]]:
     qr = qrcode.QRCode(
         version=None,
@@ -1144,16 +1151,19 @@ def _draw_wide_text_sticker(
         (f"Serial No: {row['Device ID']}", layout["left_x"], layout["left_w"], layout["second_baseline"]),
         (f"CCID: {row['CCID']}", layout["right_x"], layout["right_w"], layout["second_baseline"]),
     )
-    canvas.setFillColorRGB(0, 0, 0)
-    for text_value, x_mm, width_mm, baseline_top in fields:
-        size = _fitted_font_size(
+    shared_size = min(
+        _fitted_font_size(
             text_value,
             width_mm * mm,
             WIDE_TEXT_FONT_PT,
             minimum_pt=3.2,
             font_name=font.pdf_name,
         )
-        canvas.setFont(font.pdf_name, size)
+        for text_value, _, width_mm, _ in fields
+    )
+    canvas.setFillColorRGB(0, 0, 0)
+    for text_value, x_mm, width_mm, baseline_top in fields:
+        canvas.setFont(font.pdf_name, shared_size)
         canvas.drawString(
             x_mm * mm,
             (WIDE_LABEL_HEIGHT_MM - baseline_top) * mm,
@@ -1199,19 +1209,26 @@ def _draw_wide_barcode_sticker(
         WIDE_LABEL_HEIGHT_MM,
     )
 
-    canvas.setFillColorRGB(0, 0, 0)
-    for text_value, x_mm, width_mm in (
-        (f"IMEI: {row['IMEI']}", layout["imei_barcode_x"], layout["imei_barcode_w"]),
-        (f"CCID: {row['CCID']}", layout["ccid_barcode_x"], layout["ccid_barcode_w"]),
+    caption_fields = []
+    for text_value, value, box_x_mm, box_width_mm in (
+        (f"IMEI: {row['IMEI']}", row["IMEI"], layout["imei_barcode_x"], layout["imei_barcode_w"]),
+        (f"CCID: {row['CCID']}", row["CCID"], layout["ccid_barcode_x"], layout["ccid_barcode_w"]),
     ):
-        size = _fitted_font_size(
+        x_mm, width_mm = _barcode_content_box_mm(value, box_x_mm, box_width_mm)
+        caption_fields.append((text_value, x_mm, width_mm))
+    caption_size = min(
+        _fitted_font_size(
             text_value,
             width_mm * mm,
             WIDE_BARCODE_TEXT_FONT_PT,
             minimum_pt=2.8,
             font_name=font.pdf_name,
         )
-        canvas.setFont(font.pdf_name, size)
+        for text_value, _, width_mm in caption_fields
+    )
+    canvas.setFillColorRGB(0, 0, 0)
+    canvas.setFont(font.pdf_name, caption_size)
+    for text_value, x_mm, _ in caption_fields:
         canvas.drawString(
             x_mm * mm,
             (WIDE_LABEL_HEIGHT_MM - layout["barcode_text_top"]) * mm,
@@ -1539,7 +1556,7 @@ def _render_wide_text_svg(row: dict[str, str], font: StickerFont) -> str:
         (html.escape(f"Serial No: {row['Device ID']}"), layout["left_x"], layout["left_w"], layout["second_baseline"]),
         (html.escape(f"CCID: {row['CCID']}"), layout["right_x"], layout["right_w"], layout["second_baseline"]),
     )
-    sizes = [
+    shared_size = min(
         _fitted_font_size(
             text_value,
             width_mm * mm,
@@ -1548,10 +1565,10 @@ def _render_wide_text_svg(row: dict[str, str], font: StickerFont) -> str:
             font_name=font.pdf_name,
         )
         for text_value, _, width_mm, _ in fields
-    ]
+    )
     text_elements = "".join(
-        f'<text x="{x_mm}" y="{baseline_top}" font-size="{size / mm:.4f}">{text_value}</text>'
-        for (text_value, x_mm, _, baseline_top), size in zip(fields, sizes)
+        f'<text x="{x_mm}" y="{baseline_top}" font-size="{shared_size / mm:.4f}">{text_value}</text>'
+        for text_value, x_mm, _, baseline_top in fields
     )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDE_LABEL_WIDTH_MM}mm" '
@@ -1574,19 +1591,24 @@ def _render_wide_barcode_svg(
     imei_line = html.escape(f"IMEI: {row['IMEI']}")
     ccid_line = html.escape(f"CCID: {row['CCID']}")
     device_line = html.escape(f"S/N: {row['Device ID']}")
-    imei_size = _fitted_font_size(
-        imei_line,
-        layout["imei_barcode_w"] * mm,
-        WIDE_BARCODE_TEXT_FONT_PT,
-        minimum_pt=2.8,
-        font_name=font.pdf_name,
+    imei_text_x, imei_text_w = _barcode_content_box_mm(
+        row["IMEI"], layout["imei_barcode_x"], layout["imei_barcode_w"]
     )
-    ccid_size = _fitted_font_size(
-        ccid_line,
-        layout["ccid_barcode_w"] * mm,
-        WIDE_BARCODE_TEXT_FONT_PT,
-        minimum_pt=2.8,
-        font_name=font.pdf_name,
+    ccid_text_x, ccid_text_w = _barcode_content_box_mm(
+        row["CCID"], layout["ccid_barcode_x"], layout["ccid_barcode_w"]
+    )
+    caption_size = min(
+        _fitted_font_size(
+            text_value,
+            width_mm * mm,
+            WIDE_BARCODE_TEXT_FONT_PT,
+            minimum_pt=2.8,
+            font_name=font.pdf_name,
+        )
+        for text_value, width_mm in (
+            (imei_line, imei_text_w),
+            (ccid_line, ccid_text_w),
+        )
     )
     model_size = _fitted_font_size(
         model,
@@ -1612,8 +1634,8 @@ def _render_wide_barcode_svg(
         f'{_svg_barcode_in_box(row["IMEI"], layout["imei_barcode_x"], layout["barcode_top"], layout["imei_barcode_w"], layout["barcode_h"], printer_dpi)}'
         f'{_svg_barcode_in_box(row["CCID"], layout["ccid_barcode_x"], layout["barcode_top"], layout["ccid_barcode_w"], layout["barcode_h"], printer_dpi)}'
         '<g class="dynamic-text" fill="#000">'
-        f'<text x="{layout["imei_barcode_x"]}" y="{layout["barcode_text_top"]}" font-size="{imei_size / mm:.4f}">{imei_line}</text>'
-        f'<text x="{layout["ccid_barcode_x"]}" y="{layout["barcode_text_top"]}" font-size="{ccid_size / mm:.4f}">{ccid_line}</text>'
+        f'<text x="{imei_text_x:.4f}" y="{layout["barcode_text_top"]}" font-size="{caption_size / mm:.4f}">{imei_line}</text>'
+        f'<text x="{ccid_text_x:.4f}" y="{layout["barcode_text_top"]}" font-size="{caption_size / mm:.4f}">{ccid_line}</text>'
         f'<text x="{model_center}" y="{layout["model_label_top"]}" text-anchor="middle" font-size="{WIDE_MODEL_FONT_PT / mm:.4f}">Model</text>'
         f'<text x="{model_center}" y="{layout["model_value_top"]}" text-anchor="middle" font-size="{model_size / mm:.4f}">{html.escape(model)}</text>'
         f'<text x="{qr_center}" y="{layout["device_text_top"]}" text-anchor="middle" font-size="{device_size / mm:.4f}">{device_line}</text>'
