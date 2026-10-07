@@ -402,7 +402,7 @@ def test_wide_barcode_mode_matches_reference_content():
     assert "CCID: 89148000001234567890" in svg
     assert ">Model<" in svg
     assert ">4G Dongle<" in svg
-    assert ">K34632721<" in svg
+    assert ">S/N: K34632721<" in svg
 
     data = server.render_to_pdf([ROWS[0]], sticker_mode="wide_barcodes").getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]
@@ -410,6 +410,26 @@ def test_wide_barcode_mode_matches_reference_content():
     height_mm = float(page.mediabox.height) / 72 * 25.4
     assert width_mm == pytest.approx(server.WIDE_LABEL_WIDTH_MM, abs=0.02)
     assert height_mm == pytest.approx(server.WIDE_LABEL_HEIGHT_MM, abs=0.02)
+
+
+def test_wide_modes_use_equal_internal_column_gutters():
+    text_layout = server.WIDE_TEXT_LAYOUT
+    text_gaps = [
+        text_layout["right_x"] - (text_layout["left_x"] + text_layout["left_w"]),
+        text_layout["qr_x"] - (text_layout["right_x"] + text_layout["right_w"]),
+    ]
+    assert text_gaps == pytest.approx([1.5, 1.5], abs=0.001)
+
+    barcode_layout = server.WIDE_BARCODE_LAYOUT
+    barcode_gaps = [
+        barcode_layout["ccid_barcode_x"]
+        - (barcode_layout["imei_barcode_x"] + barcode_layout["imei_barcode_w"]),
+        barcode_layout["model_x"]
+        - (barcode_layout["ccid_barcode_x"] + barcode_layout["ccid_barcode_w"]),
+        barcode_layout["qr_column_x"]
+        - (barcode_layout["model_x"] + barcode_layout["model_w"]),
+    ]
+    assert barcode_gaps == pytest.approx([1.5, 1.5, 1.5], abs=0.001)
 
 
 def test_fixed_artwork_is_vector_not_an_embedded_image():
