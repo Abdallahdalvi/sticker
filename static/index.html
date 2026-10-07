@@ -68,9 +68,10 @@
             <label class="select-label mode-field">Sticker design
               <select id="sticker-mode" disabled>
                 <option value="standard" selected>Full design — 24.08 × 74.08 mm</option>
-                <option value="compact">Compact — 24.08 × 34 mm</option>
+                <option value="compact">Compact with barcodes — 24.08 × 34 mm</option>
+                <option value="compact_text">Compact text only — 24.08 × 34 mm</option>
               </select>
-              <small>Compact keeps DC input, identifiers, barcodes, QR, and Make in India.</small>
+              <small>Text-only compact removes both barcodes but keeps identifiers, QR, and Make in India.</small>
             </label>
             <label class="select-label">Output layout
               <select id="page-format" disabled>
@@ -116,6 +117,6 @@
     </section>
   </main>
 
-  <script src="editor.js?v=18"></script>
+  <script src="editor.js?v=19"></script>
 </body>
 </html>

@@ -69,20 +69,21 @@ function updateRangeSummary() {
   const records = Math.min(available, Math.max(1, Number(recordCount.value) || available));
   startRecord.value = start;
   recordCount.value = records;
-  const compact = stickerMode.value === 'compact';
+  const compact = stickerMode.value !== 'standard';
+  const textOnly = stickerMode.value === 'compact_text';
   const labelsPerSheet = compact ? 49 : 21;
   const rowsPerSheet = compact ? 7 : 3;
   const pages = pageFormat.value === 'a4' ? Math.ceil(records / labelsPerSheet) : records;
   summaryValues[0].textContent = records.toLocaleString();
   summaryValues[1].textContent = pages.toLocaleString();
-  summaryValues[2].textContent = '3';
+  summaryValues[2].textContent = textOnly ? '1' : '3';
   printWarning.textContent = pageFormat.value === 'a4'
     ? `A4: ${labelsPerSheet} stickers per sheet (7 × ${rowsPerSheet}) with 4 mm cutting gaps. Print at 100% / Actual Size.`
     : 'Print at 100% / Actual Size. Do not use “Fit to page”.';
 }
 
 function updateModeUi() {
-  const compact = stickerMode.value === 'compact';
+  const compact = stickerMode.value !== 'standard';
   const height = compact ? 34 : 74.08;
   const count = compact ? 49 : 21;
   const rows = compact ? 7 : 3;
@@ -220,7 +221,9 @@ generateButton.addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    const modeSuffix = stickerMode.value === 'compact' ? '_compact' : '';
+    const modeSuffix = stickerMode.value === 'compact'
+      ? '_compact'
+      : stickerMode.value === 'compact_text' ? '_compact_text' : '';
     const suffix = pageFormat.value === 'a4' ? `${modeSuffix}_a4` : modeSuffix;
     anchor.download = `stickers_${start}-${end}${suffix}.pdf`;
     anchor.click();

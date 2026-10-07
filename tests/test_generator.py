@@ -321,6 +321,60 @@ def test_compact_mode_has_34_mm_page_and_only_requested_fixed_artwork():
     assert height_mm == pytest.approx(server.COMPACT_LABEL_HEIGHT_MM, abs=0.02)
 
 
+def test_compact_text_mode_has_even_text_spacing_and_no_barcodes():
+    row = dict(ROWS[0])
+    svg = server.render_to_svg(row, sticker_mode="compact_text")
+    assert "DC-Input: 5V - 12V" in svg
+    assert "Model: 4G Dongle" in svg
+    assert "S/N: K34632721" in svg
+    assert "CCID 89148000001234567890" in svg
+    assert "IMEI 356789012345678" in svg
+    assert 'width="19.8500"' not in svg
+
+    font = server.FONT_OPTIONS["arial"]
+    layout, ccid_size, imei_size = server._compact_text_layout_for_row(row, font)
+    sizes = [
+        server.COMPACT_BODY_FONT_PT,
+        server.COMPACT_BODY_FONT_PT,
+        server.COMPACT_BODY_FONT_PT,
+        ccid_size,
+        imei_size,
+    ]
+    baselines = [
+        layout["dc_top"],
+        layout["model_top"],
+        layout["device_top"],
+        layout["ccid_text_top"],
+        layout["imei_text_top"],
+    ]
+    metrics = [
+        tuple(value / mm for value in pdfmetrics.getAscentDescent(font.pdf_name, size))
+        for size in sizes
+    ]
+    visible_gaps = [
+        baselines[index + 1]
+        - baselines[index]
+        - abs(metrics[index][1])
+        - metrics[index + 1][0]
+        for index in range(len(baselines) - 1)
+    ]
+    visible_gaps.append(
+        layout["qr_top"] - baselines[-1] - abs(metrics[-1][1])
+    )
+    assert visible_gaps == pytest.approx([layout["text_gap"]] * 5, abs=0.001)
+    assert layout["dc_top"] - metrics[0][0] == pytest.approx(
+        server.COMPACT_TEXT_EDGE_MARGIN_MM, abs=0.001
+    )
+    assert server.COMPACT_LABEL_HEIGHT_MM - layout["bottom_art_bottom"] == pytest.approx(
+        server.COMPACT_TEXT_EDGE_MARGIN_MM, abs=0.001
+    )
+
+    data = server.render_to_pdf([row], sticker_mode="compact_text").getvalue()
+    page = PdfReader(io.BytesIO(data)).pages[0]
+    height_mm = float(page.mediabox.height) / 72 * 25.4
+    assert height_mm == pytest.approx(server.COMPACT_LABEL_HEIGHT_MM, abs=0.02)
+
+
 def test_fixed_artwork_is_vector_not_an_embedded_image():
     data = server.render_to_pdf([ROWS[0]], printer_dpi=600).getvalue()
     page = PdfReader(io.BytesIO(data)).pages[0]
@@ -363,6 +417,25 @@ def test_compact_a4_output_places_49_stickers_per_sheet():
     ]
     data = server.render_to_pdf(
         rows, printer_dpi=600, page_format="a4", sticker_mode="compact"
+    ).getvalue()
+    reader = PdfReader(io.BytesIO(data))
+    assert len(reader.pages) == 2
+    assert "K00000048" in (reader.pages[0].extract_text() or "")
+    assert "K00000049" in (reader.pages[1].extract_text() or "")
+
+
+def test_compact_text_a4_output_places_49_stickers_per_sheet():
+    rows = [
+        {
+            "Device ID": f"K{i:08d}",
+            "IMEI": str(356789012345000 + i),
+            "CCID": str(89148000001234567000 + i),
+            "Model": "4G Dongle",
+        }
+        for i in range(50)
+    ]
+    data = server.render_to_pdf(
+        rows, printer_dpi=300, page_format="a4", sticker_mode="compact_text"
     ).getvalue()
     reader = PdfReader(io.BytesIO(data))
     assert len(reader.pages) == 2
@@ -449,3 +522,26 @@ def test_pdf_import_qr_decodes_to_sr_number_only(tmp_path: Path):
     assert row["IMEI"] in decoded
     assert "AD1" in decoded
     assert f"S/N: {row['Device ID']}" not in decoded
+
+
+def test_compact_text_mode_outputs_only_the_qr_code(tmp_path: Path):
+    pdftoppm = _find_pdftoppm()
+    if not pdftoppm:
+        pytest.skip("pdftoppm is not installed")
+    zxingcpp = pytest.importorskip("zxingcpp")
+    pdf_path = tmp_path / "compact-text-sticker.pdf"
+    image_prefix = tmp_path / "compact-text-sticker"
+    pdf_path.write_bytes(
+        server.render_to_pdf(
+            [ROWS[0]], printer_dpi=600, sticker_mode="compact_text"
+        ).getvalue()
+    )
+    subprocess.run(
+        [pdftoppm, "-png", "-r", "600", "-f", "1", "-singlefile", str(pdf_path), str(image_prefix)],
+        check=True,
+        capture_output=True,
+    )
+    decoded = zxingcpp.read_barcodes(Image.open(image_prefix.with_suffix(".png")))
+    assert len(decoded) == 1
+    assert decoded[0].format.name == "QRCode"
+    assert decoded[0].text == server._qr_payload(ROWS[0])

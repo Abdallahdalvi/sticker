@@ -218,6 +218,7 @@ COMPACT_LAYOUT = {
 COMPACT_VISUAL_GAP_MM = 0.90
 COMPACT_BODY_FONT_PT = 4.78
 COMPACT_CODE_FONT_PT = 4.14
+COMPACT_TEXT_EDGE_MARGIN_MM = 2.05
 
 STICKER_MODES = {
     "standard": {
@@ -225,12 +226,21 @@ STICKER_MODES = {
         "a4_rows": A4_ROWS,
         "labels_per_page": A4_LABELS_PER_PAGE,
         "label": "Full design",
+        "has_barcodes": True,
     },
     "compact": {
         "label_height_mm": COMPACT_LABEL_HEIGHT_MM,
         "a4_rows": COMPACT_A4_ROWS,
         "labels_per_page": COMPACT_A4_LABELS_PER_PAGE,
         "label": "Compact 34 mm",
+        "has_barcodes": True,
+    },
+    "compact_text": {
+        "label_height_mm": COMPACT_LABEL_HEIGHT_MM,
+        "a4_rows": COMPACT_A4_ROWS,
+        "labels_per_page": COMPACT_A4_LABELS_PER_PAGE,
+        "label": "Compact text only",
+        "has_barcodes": False,
     },
 }
 
@@ -352,6 +362,58 @@ def _compact_layout_for_font(font: StickerFont) -> dict[str, float]:
     ):
         layout[key] += vertical_shift
     return layout
+
+
+def _compact_text_layout_for_row(
+    row: dict[str, str], font: StickerFont
+) -> tuple[dict[str, float], float, float]:
+    """Lay out text-only compact labels with equal visible gaps and edge margins."""
+    layout = dict(COMPACT_LAYOUT)
+    max_width_pt = (layout["info_right"] - layout["info_x"]) * mm
+    ccid_size = _fitted_font_size(
+        f"CCID {row['CCID']}",
+        max_width_pt,
+        COMPACT_BODY_FONT_PT,
+        font_name=font.pdf_name,
+    )
+    imei_size = _fitted_font_size(
+        f"IMEI {row['IMEI']}",
+        max_width_pt,
+        COMPACT_BODY_FONT_PT,
+        font_name=font.pdf_name,
+    )
+    sizes = [
+        COMPACT_BODY_FONT_PT,
+        COMPACT_BODY_FONT_PT,
+        COMPACT_BODY_FONT_PT,
+        ccid_size,
+        imei_size,
+    ]
+    metrics = [pdfmetrics.getAscentDescent(font.pdf_name, size) for size in sizes]
+    metrics_mm = [(ascent / mm, abs(descent / mm)) for ascent, descent in metrics]
+    text_height_mm = sum(ascent + descent for ascent, descent in metrics_mm)
+    gap = (
+        COMPACT_LABEL_HEIGHT_MM
+        - 2 * COMPACT_TEXT_EDGE_MARGIN_MM
+        - layout["qr_size"]
+        - text_height_mm
+    ) / len(sizes)
+    if gap <= 0:
+        raise ValueError("Text-only compact layout does not fit the selected font.")
+
+    baselines: list[float] = []
+    cursor = COMPACT_TEXT_EDGE_MARGIN_MM
+    for ascent, descent in metrics_mm:
+        baseline = cursor + ascent
+        baselines.append(baseline)
+        cursor = baseline + descent + gap
+    layout["dc_top"], layout["model_top"], layout["device_top"] = baselines[:3]
+    layout["ccid_text_top"], layout["imei_text_top"] = baselines[3:]
+    layout["qr_top"] = cursor
+    layout["bottom_art_bottom"] = layout["qr_top"] + layout["qr_size"]
+    layout["make_in_india_top"] = layout["bottom_art_bottom"] - layout["make_in_india_h"]
+    layout["text_gap"] = gap
+    return layout, ccid_size, imei_size
 
 
 @lru_cache(maxsize=8)
@@ -892,6 +954,65 @@ def _draw_compact_sticker(
                 )
 
 
+def _draw_compact_text_sticker(
+    canvas: rl_canvas.Canvas,
+    row: dict[str, str],
+    printer_dpi: int,
+    font: StickerFont,
+) -> None:
+    del printer_dpi  # Text-only mode has no printer-dot-dependent Code 128 symbols.
+    layout, ccid_size, imei_size = _compact_text_layout_for_row(row, font)
+    canvas.setFillColorRGB(0, 0, 0)
+    canvas.rect(0, 0, LABEL_WIDTH_MM * mm, COMPACT_LABEL_HEIGHT_MM * mm, fill=1, stroke=0)
+
+    info_x = layout["info_x"] * mm
+    model = row.get("Model", "") or "4G Dongle"
+    lines = (
+        ("DC-Input: 5V - 12V", layout["dc_top"], COMPACT_BODY_FONT_PT),
+        (f"Model: {model}", layout["model_top"], COMPACT_BODY_FONT_PT),
+        (f"S/N: {row['Device ID']}", layout["device_top"], COMPACT_BODY_FONT_PT),
+        (f"CCID {row['CCID']}", layout["ccid_text_top"], ccid_size),
+        (f"IMEI {row['IMEI']}", layout["imei_text_top"], imei_size),
+    )
+    canvas.setFillColorRGB(1, 1, 1)
+    for text_value, baseline_top, size in lines:
+        canvas.setFont(font.pdf_name, size)
+        canvas.drawString(
+            info_x,
+            (COMPACT_LABEL_HEIGHT_MM - baseline_top) * mm,
+            text_value,
+        )
+
+    _draw_svg_in_box(
+        canvas,
+        MAKE_IN_INDIA_DRAWING,
+        layout["make_in_india_x"],
+        layout["make_in_india_top"],
+        layout["make_in_india_w"],
+        layout["make_in_india_h"],
+        label_height_mm=COMPACT_LABEL_HEIGHT_MM,
+    )
+    matrix = _qr_matrix(_qr_payload(row))
+    qr_x = layout["qr_x"] * mm
+    qr_size = layout["qr_size"] * mm
+    qr_y = (COMPACT_LABEL_HEIGHT_MM - layout["qr_top"] - layout["qr_size"]) * mm
+    cell = qr_size / len(matrix)
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
+    canvas.setFillColorRGB(0, 0, 0)
+    for row_idx, cells in enumerate(matrix):
+        for col_idx, dark in enumerate(cells):
+            if dark:
+                canvas.rect(
+                    qr_x + col_idx * cell,
+                    qr_y + (len(matrix) - row_idx - 1) * cell,
+                    cell,
+                    cell,
+                    fill=1,
+                    stroke=0,
+                )
+
+
 def render_to_pdf(
     rows: list[dict[str, str]],
     printer_dpi: int = 600,
@@ -904,20 +1025,25 @@ def render_to_pdf(
     if page_format not in ("label", "a4"):
         raise ValueError("Page format must be 'label' or 'a4'.")
     if sticker_mode not in STICKER_MODES:
-        raise ValueError("Sticker mode must be 'standard' or 'compact'.")
+        raise ValueError("Sticker mode must be 'standard', 'compact' or 'compact_text'.")
     font = _get_sticker_font(font_key)
     mode = STICKER_MODES[sticker_mode]
-    layout = COMPACT_LAYOUT if sticker_mode == "compact" else LAYOUT
+    layout = LAYOUT if sticker_mode == "standard" else COMPACT_LAYOUT
     label_height_mm = float(mode["label_height_mm"])
     a4_rows = int(mode["a4_rows"])
     labels_per_page = int(mode["labels_per_page"])
-    draw_sticker = _draw_compact_sticker if sticker_mode == "compact" else _draw_sticker
+    draw_sticker = {
+        "standard": _draw_sticker,
+        "compact": _draw_compact_sticker,
+        "compact_text": _draw_compact_text_sticker,
+    }[sticker_mode]
     errors = validate_rows(rows)
     if errors:
         raise ValueError("Input rows failed validation.")
-    for row in rows:
-        _barcode_spec(row["CCID"], layout["barcode_w"] * mm, printer_dpi)
-        _barcode_spec(row["IMEI"], layout["barcode_w"] * mm, printer_dpi)
+    if mode["has_barcodes"]:
+        for row in rows:
+            _barcode_spec(row["CCID"], layout["barcode_w"] * mm, printer_dpi)
+            _barcode_spec(row["IMEI"], layout["barcode_w"] * mm, printer_dpi)
 
     buffer = io.BytesIO()
     pagesize = (LABEL_WIDTH_MM * mm, label_height_mm * mm) if page_format == "label" else A4
@@ -1091,6 +1217,36 @@ def _render_compact_svg(row: dict[str, str], printer_dpi: int, font: StickerFont
     )
 
 
+def _render_compact_text_svg(row: dict[str, str], font: StickerFont) -> str:
+    layout, ccid_size, imei_size = _compact_text_layout_for_row(row, font)
+    model_line = html.escape(f"Model: {row.get('Model', '') or '4G Dongle'}")
+    device_line = html.escape(f"S/N: {row['Device ID']}")
+    ccid_line = html.escape(f"CCID {row['CCID']}")
+    imei_line = html.escape(f"IMEI {row['IMEI']}")
+    make_in_india = (
+        f'<svg x="{layout["make_in_india_x"]:.4f}" y="{layout["make_in_india_top"]:.4f}" '
+        f'width="{layout["make_in_india_w"]:.4f}" height="{layout["make_in_india_h"]:.4f}" '
+        'viewBox="0 0 1983 903" preserveAspectRatio="xMidYMid meet">'
+        f'{MAKE_IN_INDIA_SVG_INNER}</svg>'
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{LABEL_WIDTH_MM}mm" '
+        f'height="{COMPACT_LABEL_HEIGHT_MM}mm" viewBox="0 0 {LABEL_WIDTH_MM} {COMPACT_LABEL_HEIGHT_MM}">'
+        f'{_svg_font_style(font)}'
+        '<rect width="100%" height="100%" fill="#000"/>'
+        '<g class="dynamic-text" fill="#fff">'
+        f'<text x="{layout["info_x"]}" y="{layout["dc_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">DC-Input: 5V - 12V</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["model_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">{model_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["device_top"]}" font-size="{COMPACT_BODY_FONT_PT / mm:.4f}">{device_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["ccid_text_top"]}" font-size="{ccid_size / mm:.4f}">{ccid_line}</text>'
+        f'<text x="{layout["info_x"]}" y="{layout["imei_text_top"]}" font-size="{imei_size / mm:.4f}">{imei_line}</text>'
+        '</g>'
+        f'{make_in_india}'
+        f'{_svg_qr(row, layout)}'
+        '</svg>'
+    )
+
+
 def render_to_svg(
     row: dict[str, str],
     printer_dpi: int = 600,
@@ -1102,9 +1258,11 @@ def render_to_svg(
         raise ValueError(errors[0]["message"])
     font = _get_sticker_font(font_key)
     if sticker_mode not in STICKER_MODES:
-        raise ValueError("Sticker mode must be 'standard' or 'compact'.")
+        raise ValueError("Sticker mode must be 'standard', 'compact' or 'compact_text'.")
     if sticker_mode == "compact":
         return _render_compact_svg(row, printer_dpi, font)
+    if sticker_mode == "compact_text":
+        return _render_compact_text_svg(row, font)
     vector_art = _svg_vector_art()
     ccid = html.escape(row["CCID"])
     imei = html.escape(row["IMEI"])
@@ -1224,7 +1382,11 @@ async def generate_pdf(request: GenerateRequest):
         )
     except ValueError as exc:
         _raise_validation([{"row": 0, "field": "Printer", "message": str(exc)}])
-    mode_suffix = "_compact" if request.sticker_mode == "compact" else ""
+    mode_suffix = {
+        "standard": "",
+        "compact": "_compact",
+        "compact_text": "_compact_text",
+    }.get(request.sticker_mode, "")
     suffix = f"{mode_suffix}_a4" if request.page_format == "a4" else mode_suffix
     filename = f"stickers_{request.start}-{end}{suffix}.pdf"
     labels_per_page = int(
